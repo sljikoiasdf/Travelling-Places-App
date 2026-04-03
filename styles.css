@@ -119,9 +119,13 @@
   --nav-item-min-width: 44px;
   --nav-icon-size:      24px;
 
+  --header-height:       52px;
+  --header-total-height: calc(52px + env(safe-area-inset-top, 0px));
+
   --z-map:          0;
   --z-cards:        10;
   --z-filter-bar:   20;
+  --z-header:       28;
   --z-nav:          30;
   --z-bottom-sheet: 40;
   --z-toast:        50;
@@ -218,7 +222,84 @@ img {
 
 .view--active { display: block; }
 
-.view__content { padding-bottom: var(--space-8); }
+/* List view: push content below the fixed app header */
+#view-list {
+  padding-top: var(--header-total-height);
+}
+
+.view__content { padding-bottom: calc(var(--nav-total-height) + var(--space-4)); }
+
+/* === NAVIGATION BAR === */
+
+/* === APP HEADER === */
+
+.app-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--z-header);
+  height: var(--header-total-height);
+  padding-top: env(safe-area-inset-top, 0px);
+  background: rgba(14, 14, 14, 0.88);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-bottom: 1px solid rgba(201, 168, 76, 0.14);
+}
+
+.app-header__inner {
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-4);
+}
+
+.app-header__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-header__logo {
+  width: 28px;
+  height: 28px;
+  color: var(--color-accent-gold);
+  flex-shrink: 0;
+  opacity: 0.92;
+}
+
+.app-header__wordmark {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.app-header__name {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--color-accent-gold);
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
+.app-header__descriptor {
+  font-family: var(--font-body);
+  font-size: 9.5px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.14em;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.app-header__actions {
+  width: 32px; /* balance space for future actions */
+}
+
+/* Hide header on detail page */
+.app-shell--detail .app-header { display: none; }
 
 /* === NAVIGATION BAR === */
 
@@ -228,22 +309,25 @@ img {
   left: 0;
   right: 0;
   height: var(--nav-height);
-  background-color: var(--color-bg-elevated);
-  border-top: 1px solid var(--color-border);
+  background: rgba(14, 14, 14, 0.90);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid rgba(201, 168, 76, 0.10);
   display: flex;
   align-items: stretch;
   padding-bottom: var(--space-safe-bottom);
   z-index: var(--z-nav);
-  box-shadow: var(--shadow-elevated);
+  box-shadow: 0 -1px 0 rgba(201, 168, 76, 0.06), 0 -8px 30px rgba(0, 0, 0, 0.6);
 }
 
 .nav-item {
   flex: 1;
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-1);
+  gap: 3px;
   min-width: var(--nav-item-min-width);
   min-height: 44px;
   color: var(--color-text-tertiary);
@@ -251,7 +335,23 @@ img {
   padding: var(--space-2);
 }
 
-.nav-item--active { color: var(--color-accent-gold); }
+.nav-item--active {
+  color: var(--color-accent-gold);
+}
+
+/* Gold pill indicator above active tab */
+.nav-item--active::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 2.5px;
+  background: var(--color-accent-gold);
+  border-radius: var(--radius-full);
+  opacity: 0.85;
+}
 
 .nav-item__icon {
   width: var(--nav-icon-size);
@@ -268,7 +368,7 @@ img {
 
 .filter-bar {
   position: sticky;
-  top: 0;
+  top: 0; /* sticks within #view-list scroll container; sits just below the fixed header */
   z-index: var(--z-filter-bar);
   background-color: var(--color-bg-base);
   border-bottom: 1px solid var(--color-border);
@@ -640,8 +740,14 @@ img {
 .leaflet-popup-content-wrapper,
 .leaflet-popup-tip { display: none; }
 
+/* Push map controls below the app header */
+.leaflet-control-container .leaflet-top.leaflet-left {
+  top: calc(var(--header-total-height) + var(--space-2));
+  left: var(--space-4);
+}
+
 .leaflet-control-container .leaflet-top.leaflet-right {
-  top: calc(var(--space-4) + var(--space-safe-top));
+  top: calc(var(--header-total-height) + var(--space-2));
   right: var(--space-4);
 }
 
