@@ -1,14 +1,1 @@
-{
-  "name": "Authentic Local Food",
-  "short_name": "Food Guide",
-  "display": "standalone",
-  "background_color": "#111111",
-  "theme_color": "#C9A84C",
-  "start_url": "/",
-  "orientation": "portrait",
-  "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
-  ]
-}
+ewogICJuYW1lIjogIlRoYWlsYW5kIEZvb2QgR3VpZGUiLAogICJzaG9ydF9uYW1lIjogIlRoYWlsYW5kIEZvb2QiLAogICJkZXNjcmlwdGlvbiI6ICJBIHBlcnNvbmFsIGd1aWRlIHRvIHRoZSBiZXN0IGZvb2QgaW4gVGhhaWxhbmQiLAogICJzdGFydF91cmwiOiAiLyIsCiAgImRpc3BsYXkiOiAic3RhbmRhbG9uZSIsCiAgIm9yaWVudGF0aW9uIjogInBvcnRyYWl0IiwKICAiYmFja2dyb3VuZF9jb2xvciI6ICIjMEUwRTBFIiwKICAidGhlbWVfY29sb3IiOiAiIzBFMEUwRSIsCiAgImljb25zIjogWwogICAgewogICAgICAic3JjIjogImljb24tMTkyLnBuZyIsCiAgICAgICJzaXplcyI6ICIxOTJ4MTkyIiwKICAgICAgInR5cGUiOiAiaW1hZ2UvcG5nIiwKICAgICAgInB1cnBvc2UiOiAiYW55IG1hc2thYmxlIgogICAgfSwKICAgIHsKICAgICAgInNyYyI6ICJpY29uLTE4MC5wbmciLAogICAgICAic2l6ZXMiOiAiMTgweDE4MCIsCiAgICAgICJ0eXBlIjogImltYWdlL3BuZyIsCiAgICAgICJwdXJwb3NlIjogImFueSIKICAgIH0KICBdCn0K
