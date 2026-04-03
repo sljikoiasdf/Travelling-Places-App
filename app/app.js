@@ -252,7 +252,7 @@ const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 function isOpenNow(openingHours) {
   if (!openingHours || typeof openingHours !== 'object') return 'unknown';
 
-  // Get current time in Bangkok using Intl API (never hardcode offset)
+  // Get current time in Bangkok using Intl API (never hardcode +7 offset)
   const now       = new Date();
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: CONFIG.timezone,
@@ -520,6 +520,13 @@ const MAP_TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">
 function initMap() {
   if (state.map) return; // Already initialised
 
+  // Guard: Leaflet may not have loaded if SW served an opaque cached response
+  // and SRI blocked execution (BUG-001). Fail gracefully rather than throwing.
+  if (typeof L === 'undefined') {
+    console.error('[map] Leaflet not loaded — cannot initialise map');
+    return;
+  }
+
   state.map = L.map(dom.mapContainer, {
     center:           [CONFIG.mapDefaultLat, CONFIG.mapDefaultLng],
     zoom:             CONFIG.mapDefaultZoom,
@@ -739,12 +746,12 @@ function renderList(restaurants) {
 
 function formatHoursSlot(slot) {
   if (!slot || typeof slot !== 'object') return '';
-  return `${slot.open || '?'}\u2013${slot.close || '?'}`;
+  return `${slot.open || '?'}–${slot.close || '?'}`;
 }
 
 function formatDayHours(daySlots) {
   if (daySlots === null) return 'Closed';
-  if (!Array.isArray(daySlots) || daySlots.length === 0) return '\u2014';
+  if (!Array.isArray(daySlots) || daySlots.length === 0) return '—';
   return daySlots.map(formatHoursSlot).join(', ');
 }
 
@@ -816,7 +823,7 @@ function openSheet(id) {
       ${r.city ? `
         <div class="detail-row">
           <span class="detail-row__label">City</span>
-          <span class="detail-row__value">${cityLabel(r.city)}${r.area ? ` \u2014 ${escapeHTML(r.area.replace(/_/g, ' '))}` : ''}</span>
+          <span class="detail-row__value">${cityLabel(r.city)}${r.area ? ` — ${escapeHTML(r.area.replace(/_/g, ' '))}` : ''}</span>
         </div>` : ''}
       ${r.price_range ? `
         <div class="detail-row">
@@ -826,7 +833,7 @@ function openSheet(id) {
       ${r.is_halal ? `
         <div class="detail-row">
           <span class="detail-row__label">Halal</span>
-          <span class="detail-row__value">Yes \u2713</span>
+          <span class="detail-row__value">Yes ✓</span>
         </div>` : ''}
       ${r.michelin_stars > 0 ? `
         <div class="detail-row">
@@ -862,7 +869,7 @@ function openSheet(id) {
               data-id="${id}"
               aria-pressed="${!!personal.is_visited}"
               aria-label="${personal.is_visited ? 'Mark as not visited' : 'Mark as visited'}">
-        ${personal.is_visited ? '\u2713 Visited' : '\u25CB Mark visited'}
+        ${personal.is_visited ? '✓ Visited' : '○ Mark visited'}
       </button>
     </div>`;
 
@@ -941,7 +948,7 @@ function attachEventListeners() {
       handlePersonalToggle(wbtn.dataset.id, 'wishlist');
       return;
     }
-    // Card tap \u2192 open sheet
+    // Card tap → open sheet
     const card = e.target.closest('[data-id]');
     if (card) openSheet(card.dataset.id);
   });
@@ -999,7 +1006,7 @@ async function handlePersonalToggle(id, action) {
   } else if (action === 'visited') {
     const next = !current.is_visited;
     updates    = { is_visited: next };
-    toast      = next ? 'Marked as visited \u2713' : 'Removed from visited';
+    toast      = next ? 'Marked as visited ✓' : 'Removed from visited';
   }
 
   await upsertPersonalData(id, updates);
