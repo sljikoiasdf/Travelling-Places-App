@@ -557,7 +557,7 @@ function handleRoute(hash) {
   if (!hash) hash = '';
 
   if (hash.startsWith('#restaurant/')) {
-    const slug = decodeURIComponent(hash.slice(13));
+    const slug = decodeURIComponent(hash.slice(12));
     if (state.restaurants.length === 0) {
       // Data not yet loaded — store pending and handle after fetch
       state.pendingRoute = hash;
