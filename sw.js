@@ -57,9 +57,10 @@ self.addEventListener('activate', (event) => {
 // Spec: docs/design/FEATURE_SPECS.md — Feature 10
 //
 // Strategy map:
-//   Static shell (CSS, JS, HTML, icons) → cache-first
+//   Static shell (CSS, JS, HTML, icons) → network-first (always fresh when online; cache fallback offline)
 //   Supabase REST API (/rest/v1/)        → network-first, fall back to cache
 //   Supabase Storage (/storage/v1/)      → network-only (photos)
+//   CDN assets (unpkg, jsdelivr)         → cache-first (stable versioned URLs)
 //   Everything else                      → network-first, fall back to cache
 
 const SUPABASE_HOST    = 'gfmjhirnywupfbfmflwn.supabase.co';
@@ -70,11 +71,15 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url         = new URL(request.url);
 
-  // ── 1. Static shell — cache-first ───────────────────────────
-  if (url.origin === self.location.origin ||
-      url.host === 'unpkg.com' ||
-      url.host === 'cdn.jsdelivr.net') {
+  // ── 1. CDN assets — cache-first (stable versioned URLs) ──────
+  if (url.host === 'unpkg.com' || url.host === 'cdn.jsdelivr.net') {
     event.respondWith(cacheFirst(request));
+    return;
+  }
+
+  // ── 1b. Static shell — network-first (always fresh when online) ─
+  if (url.origin === self.location.origin) {
+    event.respondWith(networkFirst(request, CACHE_NAME));
     return;
   }
 
