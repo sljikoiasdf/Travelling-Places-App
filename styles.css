@@ -1,5 +1,8 @@
 /* THAILAND FOOD GUIDE — styles.css */
 
+/* Ensure [hidden] always wins over display rules in component CSS */
+[hidden] { display: none !important; }
+
 /* COLOUR TOKENS */
 
 :root {
