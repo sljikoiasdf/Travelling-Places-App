@@ -6,8 +6,8 @@
 
 'use strict';
 
-const CACHE_NAME  = 'thailand-food-v3';
-const PHOTO_CACHE = 'thailand-food-photos-v3';
+const CACHE_NAME  = 'thailand-food-v4';
+const PHOTO_CACHE = 'thailand-food-photos-v4';
 
 // Static shell assets — pre-cached on install
 // Supabase JS client and Leaflet CDN are included (versioned URLs are stable)
