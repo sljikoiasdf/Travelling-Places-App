@@ -520,6 +520,13 @@ const MAP_TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">
 function initMap() {
   if (state.map) return; // Already initialised
 
+  // Guard: Leaflet may not have loaded if SW served an opaque cached response
+  // and SRI blocked execution (BUG-001). Fail gracefully rather than throwing.
+  if (typeof L === 'undefined') {
+    console.error('[map] Leaflet not loaded — cannot initialise map');
+    return;
+  }
+
   state.map = L.map(dom.mapContainer, {
     center:           [CONFIG.mapDefaultLat, CONFIG.mapDefaultLng],
     zoom:             CONFIG.mapDefaultZoom,
@@ -923,8 +930,10 @@ function switchView(view) {
   if (view === 'map') {
     initMap();
     setTimeout(() => {
-      state.map.invalidateSize();
-      renderPins(state.filtered);
+      if (state.map) {
+        state.map.invalidateSize();
+        renderPins(state.filtered);
+      }
     }, 50);
   }
 }
