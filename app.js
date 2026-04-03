@@ -170,8 +170,8 @@ async function refreshFromNetwork() {
 
     if (state.restaurants.length === 0) {
       showToast('Could not load restaurants. Check your connection.', 'error');
-      dom.emptyState.hidden = false;
-      dom.cardList.hidden   = true;
+      dom.emptyState.style.display = 'flex';
+      dom.cardList.style.display   = 'none';
     } else {
       showToast('Using saved data — could not refresh.', 'error');
       renderList(state.filtered);
@@ -180,9 +180,9 @@ async function refreshFromNetwork() {
 }
 
 function renderLoadingState() {
-  if (dom.skeletonList) dom.skeletonList.hidden = false;
-  if (dom.cardList)     dom.cardList.hidden     = true;
-  if (dom.emptyState)   dom.emptyState.hidden   = true;
+  if (dom.skeletonList) dom.skeletonList.style.display = 'flex';
+  if (dom.cardList)     dom.cardList.style.display     = 'none';
+  if (dom.emptyState)   dom.emptyState.style.display   = 'none';
 }
 
 /* ── Personal data ─────────────────────────────────────────── */
@@ -532,14 +532,14 @@ function applyFilters() {
 
 function renderList(restaurants) {
   if (!dom.cardList) return;
-  if (dom.skeletonList) dom.skeletonList.hidden = true;
-  dom.cardList.hidden = false;
+  if (dom.skeletonList) dom.skeletonList.style.display = 'none';
+  dom.cardList.style.display = 'flex';
   if (!restaurants || restaurants.length === 0) {
     dom.cardList.innerHTML = '';
-    dom.emptyState.hidden  = false;
+    dom.emptyState.style.display = 'flex';
     return;
   }
-  dom.emptyState.hidden  = true;
+  dom.emptyState.style.display = 'none';
   dom.cardList.innerHTML = restaurants.map(cardHTML).join('');
 }
 
