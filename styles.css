@@ -368,7 +368,7 @@ img {
 
 .filter-bar {
   position: sticky;
-  top: 0; /* sticks within #view-list scroll container; sits just below the fixed header */
+  top: var(--header-total-height); /* sticks just below the fixed app-header */
   z-index: var(--z-filter-bar);
   background-color: var(--color-bg-base);
   border-bottom: 1px solid var(--color-border);
