@@ -28,17 +28,22 @@ const CONFIG = {
 
 /* ── App state ─────────────────────────────────────────────── */
 const state = {
-  restaurants:   [],
-  filtered:      [],
-  activeFilters: {},
-  activeView:    'map',        // Map is the default
-  selectedId:    null,
-  pendingRoute:  null,         // Hash to resolve after data loads
-  map:           null,
-  mapPins:       new Map(),
-  personalData:  new Map(),
-  personalId:    null,
-  isLoading:     false,
+  restaurants:    [],
+  filtered:       [],
+  activeFilters:  {},
+  activeView:     'map',        // Map is the default
+  selectedId:     null,
+  pendingRoute:   null,         // Hash to resolve after data loads
+  map:            null,
+  mapPins:        new Map(),
+  personalData:   new Map(),
+  personalId:     null,
+  isLoading:      false,
+  // ── Build 2: Geolocation (MISSING-01) ────────────────────
+  userLat:        null,         // GPS latitude — set by requestLocation()
+  userLng:        null,         // GPS longitude — set by requestLocation()
+  locationStatus: 'requesting', // 'requesting' | 'granted' | 'denied' | 'unavailable'
+  sortOrder:      'rating',     // 'nearest' | 'rating' — 'nearest' only when GPS granted
 };
 
 /* ── DOM refs ──────────────────────────────────────────────── */
@@ -113,6 +118,70 @@ async function setCached(key, value) {
 }
 
 /* ============================================================
+   GEOLOCATION (MISSING-01)
+   Spec: docs/design/MISSING_FEATURES.md — MISSING-01
+   ============================================================ */
+
+/* ── GPS request ─────────────────────────────────────────────
+   Requests location on app open; sets state.userLat/Lng and
+   state.locationStatus. Timeout: 8s. No localStorage persist.
+   ────────────────────────────────────────────────────────── */
+async function requestLocation() {
+  if (!navigator.geolocation) {
+    state.locationStatus = 'unavailable';
+    return;
+  }
+  state.locationStatus = 'requesting';
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        state.userLat = pos.coords.latitude;
+        state.userLng = pos.coords.longitude;
+        state.locationStatus = 'granted';
+        state.sortOrder = 'nearest';
+        resolve();
+      },
+      () => {
+        // Denied or error
+        state.locationStatus = 'denied';
+        resolve();
+      },
+      { timeout: 8000, maximumAge: 60000, enableHighAccuracy: false }
+    );
+  });
+}
+
+/* ── Haversine distance calculator ──────────────────────────
+   Returns distance in metres between two lat/lng coordinates.
+   Used as fallback when RPC does not return dist_metres.
+   ────────────────────────────────────────────────────────── */
+function haversineDistance(lat1, lng1, lat2, lng2) {
+  if (!lat1 || !lng1 || !lat2 || !lng2) return null;
+  const R = 6371000; // Earth radius in metres
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/* ── GPS status notice ───────────────────────────────────────
+   Shows a notice when GPS is denied/unavailable.
+   Reads #location-notice element in index.html.
+   ────────────────────────────────────────────────────────── */
+function renderLocationNotice() {
+  const el = document.getElementById('location-notice');
+  if (!el) return;
+  if (state.locationStatus === 'denied' || state.locationStatus === 'unavailable') {
+    el.textContent = 'Showing all restaurants — enable location for proximity sorting';
+    el.hidden = false;
+  } else {
+    el.hidden = true;
+  }
+}
+
+/* ============================================================
    DATA FETCH
    ============================================================ */
 
@@ -120,12 +189,14 @@ async function fetchRestaurants() {
   state.isLoading = true;
   renderLoadingState();
 
+  // Request GPS first — completes before data fetch (8s timeout max)
+  await requestLocation();
+
+  // Try cache first (cache is location-agnostic — stores full restaurant list)
   const cached = await getCached(CACHE_KEY);
   if (cached) {
     state.restaurants = cached;
-    state.filtered    = cached;
-    renderList(state.filtered);
-    buildFilterChips();
+    applyFilters();
     state.isLoading = false;
     refreshFromNetwork().catch(() => {});
     return;
@@ -136,31 +207,64 @@ async function fetchRestaurants() {
 
 async function refreshFromNetwork() {
   try {
-    const { data, error } = await db
-      .from('restaurants')
-      .select([
-        'id', 'name_th', 'name_en', 'slug', 'city', 'area',
-        'lat', 'lng', 'location_precision',
-        'cuisine_types', 'price_range',
-        'opening_hours', 'phone', 'website',
-        'photos', 'description_en', 'description_th', 'tagline',
-        'is_halal', 'is_vegetarian_friendly',
-        'michelin_stars', 'michelin_bib',
-      ].join(', '))
-      .order('name_en', { ascending: true });
+    let data, error;
+
+    if (state.locationStatus === 'granted' && state.userLat && state.userLng) {
+      // GPS available — use nearby_restaurants RPC (sorted by distance)
+      // radius_m: 50000 (50km) — returns all restaurants within 50km of user
+      ({ data, error } = await db.rpc('nearby_restaurants', {
+        user_lat: state.userLat,
+        user_lng: state.userLng,
+        radius_m: 50000,
+        limit_n:  100
+      }));
+
+      // Attach _distanceMetres to each restaurant for use by distance display (MISSING-02)
+      // RPC returns dist_metres column; fall back to haversine if null
+      if (data) {
+        data = data.map(r => ({
+          ...r,
+          _distanceMetres: r.dist_metres != null
+            ? r.dist_metres
+            : haversineDistance(state.userLat, state.userLng, r.lat, r.lng)
+        }));
+      }
+    } else {
+      // No GPS — fetch all restaurants sorted by rating
+      ({ data, error } = await db
+        .from('restaurants')
+        .select(`
+          id, name_th, name_en, slug, city, area,
+          location_precision, lat, lng,
+          cuisine_types, price_range, is_halal, is_vegetarian_friendly,
+          michelin_stars, michelin_bib,
+          opening_hours, phone, website, tagline,
+          photos, identification_photo_url, dishes,
+          cart_identifier, location_notes,
+          nearby_landmark_en, landmark_latitude, landmark_longitude,
+          legacy_note, source_quote_th, wongnai_rating,
+          created_at
+        `)
+        .order('wongnai_rating', { ascending: false, nullsFirst: false })
+      );
+
+      // No GPS — attach null _distanceMetres for consistency (used by MISSING-02)
+      if (data) {
+        data = data.map(r => ({ ...r, _distanceMetres: null }));
+      }
+    }
 
     if (error) throw error;
 
     state.restaurants = data || [];
-    state.filtered    = state.restaurants;
     state.isLoading   = false;
 
     await setCached(CACHE_KEY, state.restaurants);
-    renderList(state.filtered);
-    buildFilterChips();
+    applyFilters();
 
     // Render map pins if map is currently visible
     if (state.activeView === 'map' && state.map) {
+      state.map.invalidateSize();
       renderPins(state.filtered);
     }
 
@@ -170,11 +274,14 @@ async function refreshFromNetwork() {
 
     if (state.restaurants.length === 0) {
       showToast('Could not load restaurants. Check your connection.', 'error');
-      dom.emptyState.style.display = 'flex';
-      dom.cardList.style.display   = 'none';
+      if (dom.emptyState) {
+        dom.emptyState.removeAttribute('hidden');
+        dom.emptyState.style.display = 'flex';
+      }
+      if (dom.cardList) dom.cardList.style.display = 'none';
     } else {
       showToast('Using saved data — could not refresh.', 'error');
-      renderList(state.filtered);
+      applyFilters();
     }
   }
 }
@@ -545,6 +652,9 @@ function applyFilters() {
   renderList(state.filtered);
   buildFilterChips();
   if (state.activeView === 'map') renderPins(state.filtered);
+
+  // Build 2: Show GPS status notice when denied (MISSING-01)
+  renderLocationNotice();
 }
 
 function renderList(restaurants) {
