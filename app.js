@@ -446,16 +446,28 @@ function renderPins(restaurants) {
     const openStatus = isOpenNow(r.opening_hours);
     const personal   = state.personalData.get(r.id) || {};
     const classes    = ['map-pin'];
-    if (openStatus === 'open')  classes.push('map-pin--open');
-    if (personal.is_visited)    classes.push('map-pin--visited');
-    if (personal.is_wishlisted) classes.push('map-pin--wishlisted');
-    if (r.id === state.selectedId) classes.push('map-pin--selected');
+    if (openStatus === 'open')        classes.push('map-pin--open');
+    else if (openStatus === 'closed') classes.push('map-pin--closed');
+    if (personal.is_visited)          classes.push('map-pin--visited');
+    if (personal.is_wishlisted)       classes.push('map-pin--wishlisted');
+    if (r.id === state.selectedId)    classes.push('map-pin--selected');
+
+    // Truncate name for pin label
+    const fullName  = r.name_en || r.name_th || '';
+    const pinName   = fullName.length > 16 ? fullName.slice(0, 15) + '…' : fullName;
+
+    // Status indicator: dot + label for open/closed, nothing for unknown
+    const statusHTML = openStatus === 'open'
+      ? `<span class="map-pin__dot"></span><span class="map-pin__status">Open</span>`
+      : openStatus === 'closed'
+        ? `<span class="map-pin__dot"></span><span class="map-pin__status">Closed</span>`
+        : '';
 
     const icon = L.divIcon({
       className: '',
-      html:      `<div class="${classes.join(' ')}" aria-label="${escapeHTML(r.name_en || r.name_th)}"></div>`,
-      iconSize:  [32, 32],
-      iconAnchor:[16, 32],
+      html: `<div class="${classes.join(' ')}" aria-label="${escapeHTML(fullName)}">${statusHTML}<span class="map-pin__name">${escapeHTML(pinName)}</span><div class="map-pin__tail"></div></div>`,
+      iconSize:   [0, 0],
+      iconAnchor: [0, 0],
     });
 
     const marker = L.marker([r.lat, r.lng], { icon }).addTo(state.map);
