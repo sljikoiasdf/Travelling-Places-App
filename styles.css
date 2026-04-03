@@ -385,6 +385,14 @@ img {
   line-height: var(--leading-tight);
 }
 
+.card__tagline {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-accent-gold);
+  letter-spacing: 0.01em;
+  margin-bottom: var(--space-1);
+}
+
 .card__name-english {
   font-size: var(--text-base);
   font-weight: var(--weight-medium);

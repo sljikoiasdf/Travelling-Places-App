@@ -143,7 +143,7 @@ async function refreshFromNetwork() {
         'lat', 'lng', 'location_precision',
         'cuisine_types', 'price_range',
         'opening_hours', 'phone', 'website',
-        'photos', 'description_en', 'description_th',
+        'photos', 'description_en', 'description_th', 'tagline',
         'is_halal', 'is_vegetarian_friendly',
         'michelin_stars', 'michelin_bib',
       ].join(', '))
@@ -404,6 +404,7 @@ function cardHTML(r) {
   <div class="card__body">
     <h2 class="card__name-thai">${escapeHTML(r.name_th || r.name_en)}</h2>
     ${r.name_en && r.name_th ? `<p class="card__name-english">${escapeHTML(r.name_en)}</p>` : ''}
+    ${r.tagline ? `<p class="card__tagline">${escapeHTML(r.tagline)}</p>` : ''}
     <div class="card__meta">${cuisineTag}${priceTag}${michelinTag}${halalTag}${cityTag}</div>
     ${r.area ? `<p class="card__location">${escapeHTML(r.area.replace(/_/g, ' '))}</p>` : ''}
     <div class="card__actions">
@@ -452,9 +453,10 @@ function renderPins(restaurants) {
     if (personal.is_wishlisted)       classes.push('map-pin--wishlisted');
     if (r.id === state.selectedId)    classes.push('map-pin--selected');
 
-    // Truncate name for pin label
+    // Use tagline as pin label (tells you what the place IS), fall back to English name
     const fullName  = r.name_en || r.name_th || '';
-    const pinName   = fullName.length > 16 ? fullName.slice(0, 15) + '…' : fullName;
+    const rawLabel  = r.tagline || fullName;
+    const pinLabel  = rawLabel.length > 22 ? rawLabel.slice(0, 21) + '…' : rawLabel;
 
     // Status indicator: dot + label for open/closed, nothing for unknown
     const statusHTML = openStatus === 'open'
@@ -465,7 +467,7 @@ function renderPins(restaurants) {
 
     const icon = L.divIcon({
       className: '',
-      html: `<div class="${classes.join(' ')}" aria-label="${escapeHTML(fullName)}">${statusHTML}<span class="map-pin__name">${escapeHTML(pinName)}</span><div class="map-pin__tail"></div></div>`,
+      html: `<div class="${classes.join(' ')}" aria-label="${escapeHTML(fullName)}">${statusHTML}<span class="map-pin__name">${escapeHTML(pinLabel)}</span><div class="map-pin__tail"></div></div>`,
       iconSize:   [0, 0],
       iconAnchor: [0, 0],
     });
