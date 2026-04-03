@@ -383,7 +383,7 @@ function cardHTML(r) {
   const cuisineTag = Array.isArray(r.cuisine_types) && r.cuisine_types.length
     ? `<span class="badge badge--cuisine">${escapeHTML(r.cuisine_types[0].replace(/_/g, ' '))}</span>` : '';
   const priceTag = r.price_range
-    ? `<span class="badge badge--price" aria-label="Price range ${r.price_range">${'฿'.repeat(r.price_range)}</span>` : '';
+    ? `<span class="badge badge--price" aria-label="Price range ${r.price_range}">${'฿'.repeat(r.price_range)}</span>` : '';
   const michelinTag = r.michelin_stars > 0
     ? `<span class="badge badge--michelin">${'★'.repeat(r.michelin_stars)}</span>`
     : r.michelin_bib ? `<span class="badge badge--michelin">Bib</span>` : '';
