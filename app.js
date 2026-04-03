@@ -180,9 +180,12 @@ async function refreshFromNetwork() {
 }
 
 function renderLoadingState() {
-  if (dom.skeletonList) dom.skeletonList.style.display = 'flex';
-  if (dom.cardList)     dom.cardList.style.display     = 'none';
-  if (dom.emptyState)   dom.emptyState.style.display   = 'none';
+  if (dom.skeletonList) {
+    dom.skeletonList.removeAttribute('hidden');
+    dom.skeletonList.style.display = 'flex';
+  }
+  if (dom.cardList)   dom.cardList.style.display   = 'none';
+  if (dom.emptyState) dom.emptyState.style.display = 'none';
 }
 
 /* ── Personal data ─────────────────────────────────────────── */
@@ -532,14 +535,21 @@ function applyFilters() {
 
 function renderList(restaurants) {
   if (!dom.cardList) return;
-  if (dom.skeletonList) dom.skeletonList.style.display = 'none';
+  if (dom.skeletonList) {
+    dom.skeletonList.style.display = 'none';
+    dom.skeletonList.setAttribute('hidden', '');
+  }
+  dom.cardList.removeAttribute('hidden');
   dom.cardList.style.display = 'flex';
   if (!restaurants || restaurants.length === 0) {
     dom.cardList.innerHTML = '';
-    dom.emptyState.style.display = 'flex';
+    if (dom.emptyState) {
+      dom.emptyState.removeAttribute('hidden');
+      dom.emptyState.style.display = 'flex';
+    }
     return;
   }
-  dom.emptyState.style.display = 'none';
+  if (dom.emptyState) dom.emptyState.style.display = 'none';
   dom.cardList.innerHTML = restaurants.map(cardHTML).join('');
 }
 
