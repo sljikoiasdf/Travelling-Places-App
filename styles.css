@@ -416,7 +416,7 @@ img {
 }
 
 .card__name-thai {
-  font-family: var(--font-display);
+  font-family: var(--font-thai);
   font-size: var(--text-xl);
   font-weight: var(--weight-bold);
   color: var(--color-text-primary);
@@ -630,7 +630,7 @@ img {
   color: var(--color-status-open);
 }
 
-/* === BOTTOM SHEET — STEP_19 === */
+/* BOTTOM SHEET — RESTAURANT DETAIL VIEW */
 
 .bottom-sheet-backdrop {
   position: fixed;
