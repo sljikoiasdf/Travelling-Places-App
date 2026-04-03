@@ -1,87 +1,137 @@
-LyogPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
-PT09PT09CiAgIFRIQUlMQU5EIEZPT0QgR1VJREUg4oCUIHN3LmpzCiAgIFNlcnZpY2UgV29ya2Vy
-OiBjYWNoZSBtYW5hZ2VtZW50ICsgZmV0Y2ggcm91dGluZwogICBTcGVjOiBkb2NzL2Rlc2lnbi9G
-RUFUVVJFX1NQRUNTLm1kIOKAlCBGZWF0dXJlIDEwCiAgID09PT09PT09PT09PT09PT09PT09PT09
-PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PSAqLwoKJ3VzZSBzdHJpY3QnOwoK
-Y29uc3QgQ0FDSEVfTkFNRSAgPSAndGhhaWxhbmQtZm9vZC12MSc7CmNvbnN0IFBIT1RPX0NBQ0hF
-ID0gJ3RoYWlsYW5kLWZvb2QtcGhvdG9zLXYxJzsKCi8vIFN0YXRpYyBzaGVsbCBhc3NldHMg4oCU
-IHByZS1jYWNoZWQgb24gaW5zdGFsbAovLyBTdXBhYmFzZSBKUyBjbGllbnQgYW5kIExlYWZsZXQg
-Q0ROIGFyZSBpbmNsdWRlZCAodmVyc2lvbmVkIFVSTHMgYXJlIHN0YWJsZSkKLy8gR29vZ2xlIEZv
-bnRzIGV4Y2x1ZGVkIOKAlCBVQS1kZXBlbmRlbnQgZHluYW1pYyByZXNwb25zZXM7IHNlcnZlZCB2
-aWEgbmV0d29yay1maXJzdCBmYWxsYmFjawpjb25zdCBTVEFUSUNfQVNTRVRTID0gWwogICcvJywK
-ICAnL2luZGV4Lmh0bWwnLAogICcvc3R5bGVzLmNzcycsCiAgJy9hcHAuanMnLAogICcvbWFuaWZl
-c3QuanNvbicsCiAgJy9pY29uLTE4MC5wbmcnLAogICdodHRwczovL3VucGtnLmNvbS9sZWFmbGV0
-QDEuOS40L2Rpc3QvbGVhZmxldC5jc3MnLAogICdodHRwczovL3VucGtnLmNvbS9sZWFmbGV0QDEu
-OS40L2Rpc3QvbGVhZmxldC5qcycsCiAgJ2h0dHBzOi8vY2RuLmpzZGVsaXZyLm5ldC9ucG0vQHN1
-cGFiYXNlL3N1cGFiYXNlLWpzQDInLApdOwoKLyog4pSA4pSAIEluc3RhbGwg4pSA4pSA4pSA4pSA
-4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA
-4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA
-4pSA4pSA4pSA4pSA4pSA4pSA4pSAICovCgpzZWxmLmFkZEV2ZW50TGlzdGVuZXIoJ2luc3RhbGwn
-LCAoZXZlbnQpID0+IHsKICBldmVudC53YWl0VW50aWwoCiAgICBjYWNoZXMub3BlbihDQUNIRV9O
-QU1FKQogICAgICAudGhlbihjYWNoZSA9PiBjYWNoZS5hZGRBbGwoU1RBVElDX0FTU0VUUykpCiAg
-ICAgIC50aGVuKCgpID0+IHNlbGYuc2tpcFdhaXRpbmcoKSkKICAgICAgLmNhdGNoKGVyciA9PiB7
-CiAgICAgICAgY29uc29sZS5lcnJvcignW3N3XSBpbnN0YWxsIGNhY2hlIGZhaWxlZDonLCBlcnIp
-OwogICAgICAgIC8vIHNraXBXYWl0aW5nIGV2ZW4gaWYgc29tZSBDRE4gYXNzZXRzIGZhaWwg4oCU
-IGFwcCBzdGlsbCB3b3JrcyBvbmxpbmUKICAgICAgICByZXR1cm4gc2VsZi5za2lwV2FpdGluZygp
-OwogICAgICB9KQogICk7Cn0pOwoKLyog4pSA4pSAIEFjdGl2YXRlIOKUgOKUgOKUgOKUgOKUgOKU
-gOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKU
-gOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKU
-gOKUgOKUgOKUgOKUgCAqLwoKc2VsZi5hZGRFdmVudExpc3RlbmVyKCdhY3RpdmF0ZScsIChldmVu
-dCkgPT4gewogIGV2ZW50LndhaXRVbnRpbCgKICAgIGNhY2hlcy5rZXlzKCkudGhlbihrZXlzID0+
-CiAgICAgIFByb21pc2UuYWxsKAogICAgICAgIGtleXMKICAgICAgICAgIC5maWx0ZXIoa2V5ID0+
-IGtleSAhPT0gQ0FDSEVfTkFNRSAmJiBrZXkgIT09IFBIT1RPX0NBQ0hFKQogICAgICAgICAgLm1h
-cChrZXkgPT4gY2FjaGVzLmRlbGV0ZShrZXkpKQogICAgICApCiAgICApLnRoZW4oKCkgPT4gc2Vs
-Zi5jbGllbnRzLmNsYWltKCkpCiAgKTsKfSk7CgovKiDilIDilIAgRmV0Y2ggcm91dGluZyDilIDi
-lIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDi
-lIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDi
-lIDilIDilIDilIAgKi8KLy8gU3BlYzogZG9jcy9kZXNpZ24vRkVBVFVSRV9TUEVDUy5tZCDigJQg
-RmVhdHVyZSAxMAovLwovLyBTdHJhdGVneSBtYXA6Ci8vICAgU3RhdGljIHNoZWxsIChDU1MsIEpT
-LCBIVE1MLCBpY29ucykg4oaSIGNhY2hlLWZpcnN0Ci8vICAgU3VwYWJhc2UgUkVTVCBBUEkgKC9y
-ZXN0L3YxLykgICAgICAgIOKGkiBuZXR3b3JrLWZpcnN0LCBmYWxsIGJhY2sgdG8gY2FjaGUKLy8g
-ICBTdXBhYmFzZSBTdG9yYWdlICgvc3RvcmFnZS92MS8pICAgICAg4oaSIG5ldHdvcmstb25seSAo
-cGhvdG9zKQovLyAgIEV2ZXJ5dGhpbmcgZWxzZSAgICAgICAgICAgICAgICAgICAgICDihpIgbmV0
-d29yay1maXJzdCwgZmFsbCBiYWNrIHRvIGNhY2hlCgpjb25zdCBTVVBBQkFTRV9IT1NUICAgID0g
-J2dmbWpoaXJueXd1cGZiZm1mbHduLnN1cGFiYXNlLmNvJzsKY29uc3QgU1VQQUJBU0VfUkVTVCAg
-ICA9ICcvcmVzdC92MS8nOwpjb25zdCBTVVBBQkFTRV9TVE9SQUdFID0gJy9zdG9yYWdlL3YxLyc7
-CgpzZWxmLmFkZEV2ZW50TGlzdGVuZXIoJ2ZldGNoJywgKGV2ZW50KSA9PiB7CiAgY29uc3QgeyBy
-ZXF1ZXN0IH0gPSBldmVudDsKICBjb25zdCB1cmwgICAgICAgICA9IG5ldyBVUkwocmVxdWVzdC51
-cmwpOwoKICAvLyDilIDilIAgMS4gU3RhdGljIHNoZWxsIOKAlCBjYWNoZS1maXJzdCDilIDilIDi
-lIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDi
-lIDilIDilIDilIDilIDilIAKICBpZiAodXJsLm9yaWdpbiA9PT0gc2VsZi5sb2NhdGlvbi5vcmln
-aW4gfHwKICAgICAgdXJsLmhvc3QgPT09ICd1bnBrZy5jb20nIHx8CiAgICAgIHVybC5ob3N0ID09
-PSAnY2RuLmpzZGVsaXZyLm5ldCcpIHsKICAgIGV2ZW50LnJlc3BvbmRXaXRoKGNhY2hlRmlyc3Qo
-cmVxdWVzdCkpOwogICAgcmV0dXJuOwogIH0KCiAgLy8g4pSA4pSAIDIuIFN1cGFiYXNlIFN0b3Jh
-Z2UgKHBob3Rvcykg4oCUIG5ldHdvcmstb25seSDilIDilIDilIDilIDilIDilIDilIDilIDilIDi
-lIDilIDilIDilIAKICBpZiAodXJsLmhvc3QgPT09IFNVUEFCQVNFX0hPU1QgJiYgdXJsLnBhdGhu
-YW1lLnN0YXJ0c1dpdGgoU1VQQUJBU0VfU1RPUkFHRSkpIHsKICAgIGV2ZW50LnJlc3BvbmRXaXRo
-KG5ldHdvcmtPbmx5KHJlcXVlc3QpKTsKICAgIHJldHVybjsKICB9CgogIC8vIOKUgOKUgCAzLiBT
-dXBhYmFzZSBSRVNUIEFQSSAoZGF0YSkg4oCUIG5ldHdvcmstZmlyc3Qg4pSA4pSA4pSA4pSA4pSA
-4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSACiAgaWYgKHVybC5ob3N0ID09PSBTVVBBQkFTRV9IT1NU
-ICYmIHVybC5wYXRobmFtZS5zdGFydHNXaXRoKFNVUEFCQVNFX1JFU1QpKSB7CiAgICBldmVudC5y
-ZXNwb25kV2l0aChuZXR3b3JrRmlyc3QocmVxdWVzdCwgQ0FDSEVfTkFNRSkpOwogICAgcmV0dXJu
-OwogIH0KCiAgLy8g4pSA4pSAIDQuIERlZmF1bHQg4oCUIG5ldHdvcmstZmlyc3Qg4pSA4pSA4pSA
-4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA
-4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSACiAgZXZlbnQucmVzcG9uZFdpdGgobmV0d29ya0ZpcnN0
-KHJlcXVlc3QsIENBQ0hFX05BTUUpKTsKfSk7CgovKiDilIDilIAgU3RyYXRlZ3kgaGVscGVycyDi
-lIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDi
-lIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDi
-lIDilIAgKi8KCmFzeW5jIGZ1bmN0aW9uIGNhY2hlRmlyc3QocmVxdWVzdCkgewogIGNvbnN0IGNh
-Y2hlZCA9IGF3YWl0IGNhY2hlcy5tYXRjaChyZXF1ZXN0KTsKICBpZiAoY2FjaGVkKSByZXR1cm4g
-Y2FjaGVkOwogIHRyeSB7CiAgICBjb25zdCByZXNwb25zZSA9IGF3YWl0IGZldGNoKHJlcXVlc3Qp
-OwogICAgaWYgKHJlc3BvbnNlLm9rKSB7CiAgICAgIGNvbnN0IGNhY2hlID0gYXdhaXQgY2FjaGVz
-Lm9wZW4oQ0FDSEVfTkFNRSk7CiAgICAgIGNhY2hlLnB1dChyZXF1ZXN0LCByZXNwb25zZS5jbG9u
-ZSgpKTsKICAgIH0KICAgIHJldHVybiByZXNwb25zZTsKICB9IGNhdGNoIChlcnIpIHsKICAgIGNv
-bnNvbGUud2FybignW3N3XSBjYWNoZUZpcnN0IG5ldHdvcmsgZmFpbGVkOicsIGVycik7CiAgICBy
-ZXR1cm4gbmV3IFJlc3BvbnNlKCdOZXR3b3JrIGVycm9yJywgeyBzdGF0dXM6IDUwMyB9KTsKICB9
-Cn0KCmFzeW5jIGZ1bmN0aW9uIG5ldHdvcmtGaXJzdChyZXF1ZXN0LCBjYWNoZU5hbWUpIHsKICB0
-cnkgewogICAgY29uc3QgcmVzcG9uc2UgPSBhd2FpdCBmZXRjaChyZXF1ZXN0KTsKICAgIGlmIChy
-ZXNwb25zZS5vaykgewogICAgICBjb25zdCBjYWNoZSA9IGF3YWl0IGNhY2hlcy5vcGVuKGNhY2hl
-TmFtZSk7CiAgICAgIGNhY2hlLnB1dChyZXF1ZXN0LCByZXNwb25zZS5jbG9uZSgpKTsKICAgIH0K
-ICAgIHJldHVybiByZXNwb25zZTsKICB9IGNhdGNoIChlcnIpIHsKICAgIGNvbnN0IGNhY2hlZCA9
-IGF3YWl0IGNhY2hlcy5tYXRjaChyZXF1ZXN0KTsKICAgIGlmIChjYWNoZWQpIHJldHVybiBjYWNo
-ZWQ7CiAgICByZXR1cm4gbmV3IFJlc3BvbnNlKCdPZmZsaW5lJywgeyBzdGF0dXM6IDUwMyB9KTsK
-ICB9Cn0KCmFzeW5jIGZ1bmN0aW9uIG5ldHdvcmtPbmx5KHJlcXVlc3QpIHsKICB0cnkgewogICAg
-cmV0dXJuIGF3YWl0IGZldGNoKHJlcXVlc3QpOwogIH0gY2F0Y2ggKGVycikgewogICAgLy8gUGhv
-dG9zIGZhaWwgZ3JhY2VmdWxseSDigJQgcmV0dXJuIDQwNCBzbyA8aW1nPiBzaG93cyBicm9rZW4g
-cGxhY2Vob2xkZXIKICAgIHJldHVybiBuZXcgUmVzcG9uc2UoJycsIHsgc3RhdHVzOiA0MDQgfSk7
-CiAgfQp9Cg==
+/* ============================================================
+   THAILAND FOOD GUIDE — sw.js
+   Service Worker: cache management + fetch routing
+   Spec: docs/design/FEATURE_SPECS.md — Feature 10
+   ============================================================ */
+
+'use strict';
+
+const CACHE_NAME  = 'thailand-food-v1';
+const PHOTO_CACHE = 'thailand-food-photos-v1';
+
+// Static shell assets — pre-cached on install
+// Supabase JS client and Leaflet CDN are included (versioned URLs are stable)
+// Google Fonts excluded — UA-dependent dynamic responses; served via network-first fallback
+const STATIC_ASSETS = [
+  '/',
+  '/index.html',
+  '/styles.css',
+  '/app.js',
+  '/manifest.json',
+  '/icon-180.png',
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+];
+
+/* ── Install ───────────────────────────────────────────────── */
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(STATIC_ASSETS))
+      .then(() => self.skipWaiting())
+      .catch(err => {
+        console.error('[sw] install cache failed:', err);
+        // skipWaiting even if some CDN assets fail — app still works online
+        return self.skipWaiting();
+      })
+  );
+});
+
+/* ── Activate ──────────────────────────────────────────────── */
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(
+        keys
+          .filter(key => key !== CACHE_NAME && key !== PHOTO_CACHE)
+          .map(key => caches.delete(key))
+      )
+    ).then(() => self.clients.claim())
+  );
+});
+
+/* ── Fetch routing ─────────────────────────────────────────── */
+// Spec: docs/design/FEATURE_SPECS.md — Feature 10
+//
+// Strategy map:
+//   Static shell (CSS, JS, HTML, icons) → cache-first
+//   Supabase REST API (/rest/v1/)        → network-first, fall back to cache
+//   Supabase Storage (/storage/v1/)      → network-only (photos)
+//   Everything else                      → network-first, fall back to cache
+
+const SUPABASE_HOST    = 'gfmjhirnywupfbfmflwn.supabase.co';
+const SUPABASE_REST    = '/rest/v1/';
+const SUPABASE_STORAGE = '/storage/v1/';
+
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url         = new URL(request.url);
+
+  // ── 1. Static shell — cache-first ───────────────────────────
+  if (url.origin === self.location.origin ||
+      url.host === 'unpkg.com' ||
+      url.host === 'cdn.jsdelivr.net') {
+    event.respondWith(cacheFirst(request));
+    return;
+  }
+
+  // ── 2. Supabase Storage (photos) — network-only ─────────────
+  if (url.host === SUPABASE_HOST && url.pathname.startsWith(SUPABASE_STORAGE)) {
+    event.respondWith(networkOnly(request));
+    return;
+  }
+
+  // ── 3. Supabase REST API (data) — network-first ─────────────
+  if (url.host === SUPABASE_HOST && url.pathname.startsWith(SUPABASE_REST)) {
+    event.respondWith(networkFirst(request, CACHE_NAME));
+    return;
+  }
+
+  // ── 4. Default — network-first ──────────────────────────────
+  event.respondWith(networkFirst(request, CACHE_NAME));
+});
+
+/* ── Strategy helpers ──────────────────────────────────────── */
+
+async function cacheFirst(request) {
+  const cached = await caches.match(request);
+  if (cached) return cached;
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      const cache = await caches.open(CACHE_NAME);
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch (err) {
+    console.warn('[sw] cacheFirst network failed:', err);
+    return new Response('Network error', { status: 503 });
+  }
+}
+
+async function networkFirst(request, cacheName) {
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      const cache = await caches.open(cacheName);
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch (err) {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    return new Response('Offline', { status: 503 });
+  }
+}
+
+async function networkOnly(request) {
+  try {
+    return await fetch(request);
+  } catch (err) {
+    // Photos fail gracefully — return 404 so <img> shows broken placeholder
+    return new Response('', { status: 404 });
+  }
+}
