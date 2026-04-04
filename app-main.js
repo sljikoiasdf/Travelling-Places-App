@@ -12,13 +12,6 @@ function renderDetailPage(r) {
   const personal   = state.personalData.get(r.id) || {};
   const openStatus = isOpenNow(r.opening_hours);
 
-  // Primary photo
-  const photos       = Array.isArray(r.photos) ? r.photos : [];
-  const primaryPhoto = photos.find(p => p.is_primary) || photos[0];
-  const photosHTML   = primaryPhoto
-    ? `<div class="detail-photo"><img src="${escapeHTML(primaryPhoto.url)}" alt="${escapeHTML(r.name_en || r.name_th)} photo" loading="eager" decoding="async"></div>`
-    : '';
-
   // Status
   const openClass = openStatus === 'open'         ? 'open-indicator--open'
                   : openStatus === 'closes_soon'  ? 'open-indicator--soon'
@@ -30,6 +23,11 @@ function renderDetailPage(r) {
                   : openStatus === 'opens_soon'   ? 'Opens soon'
                   : openStatus === 'closed'       ? 'Closed'
                   :                                 'Hours unknown';
+
+  // Photo gallery: uses same builder as card (handles multi-photo strip + placeholder)
+  // Open badge appears on the photo; no personal overlays in detail header
+  const openBadgeHTML = `<span class="open-indicator ${openClass}">${openLabel}</span>`;
+  const photosHTML = `<div class="detail-photo-area">${photoStripHTML(r, openBadgeHTML, '')}</div>`;
 
   // Hours rows
   const dayNames  = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
@@ -57,16 +55,20 @@ function renderDetailPage(r) {
     }
   }
 
+  // City-aware price currency
+  const priceSymbol = priceCurrency(r.city);
+
   dom.detailBody.innerHTML = `
     <div class="detail-body__inner">
       ${photosHTML}
 
       <div class="detail-meta-row">
-        <span class="open-indicator ${openClass}">${openLabel}</span>
         ${detailDistance}
         ${r.name_en && r.name_th ? `<p class="card__name-english">${escapeHTML(r.name_en)}</p>` : ''}
         ${r.legacy_note ? `<span class="legacy-note">${escapeHTML(r.legacy_note)}</span>` : ''}
       </div>
+
+      ${r.tagline ? `<p class="detail-tagline">${escapeHTML(r.tagline)}</p>` : ''}
 
       ${dishesDetailHTML(r.dishes)}
 
@@ -77,15 +79,10 @@ function renderDetailPage(r) {
       <div class="detail-section">
         ${cuisineDisplay ? `<div class="detail-row"><span class="detail-row__label">Cuisine</span><span class="detail-row__value">${escapeHTML(cuisineDisplay)}</span></div>` : ''}
         ${r.city ? `<div class="detail-row"><span class="detail-row__label">City</span><span class="detail-row__value">${cityLabel(r.city)}${r.area ? ` — ${escapeHTML(r.area.replace(/_/g, ' '))}` : ''}</span></div>` : ''}
-        ${r.price_range ? `<div class="detail-row"><span class="detail-row__label">Price</span><span class="detail-row__value">${'฿'.repeat(r.price_range)}</span></div>` : ''}
+        ${r.price_range ? `<div class="detail-row"><span class="detail-row__label">Price</span><span class="detail-row__value">${priceSymbol.repeat(r.price_range)}</span></div>` : ''}
         ${r.is_halal ? `<div class="detail-row"><span class="detail-row__label">Halal</span><span class="detail-row__value">Yes ✓</span></div>` : ''}
         ${r.michelin_stars > 0 ? `<div class="detail-row"><span class="detail-row__label">Michelin</span><span class="detail-row__value">${'★'.repeat(r.michelin_stars)} Star${r.michelin_stars > 1 ? 's' : ''}</span></div>` : r.michelin_bib ? `<div class="detail-row"><span class="detail-row__label">Michelin</span><span class="detail-row__value">Bib Gourmand</span></div>` : ''}
         ${r.description_en ? `<div class="detail-row"><span class="detail-row__label">About</span><span class="detail-row__value">${escapeHTML(r.description_en)}</span></div>` : ''}
-      </div>
-
-      <div class="detail-section">
-        <div class="detail-row detail-row--header"><span class="detail-row__label">Opening Hours</span></div>
-        ${hoursRows}
       </div>
 
       <div class="detail-personal">
@@ -103,6 +100,11 @@ function renderDetailPage(r) {
         </button>
         ${starRatingHTML(personal.my_rating, r.id, true)}
         ${personalNotesHTML(personal.notes, r.id)}
+      </div>
+
+      <div class="detail-section">
+        <div class="detail-row detail-row--header"><span class="detail-row__label">Opening Hours</span></div>
+        ${hoursRows}
       </div>
 
       ${sourceAttributionHTML(r)}
@@ -167,7 +169,6 @@ function formatDayHours(daySlots) {
 function attachEventListeners() {
   // Card tap → navigate to detail page
   dom.cardList.addEventListener('click', (e) => {
-    // Directions button — open nav choice sheet (B2_10)
     const dirBtn = e.target.closest('[data-action="directions"]');
     if (dirBtn) {
       e.stopPropagation();
@@ -192,7 +193,6 @@ function attachEventListeners() {
     if (!chip) return;
     const dim = chip.dataset.filterDim;
     const val = chip.dataset.filterVal;
-    // Near me — requires GPS; show toast when disabled
     if (dim === 'near_me') {
       if (state.locationStatus !== 'granted') {
         showToast('Enable location access to use Near me', 'info');
@@ -221,7 +221,6 @@ function attachEventListeners() {
 
   // Personal actions + directions on detail page
   dom.detailBody.addEventListener('click', async (e) => {
-    // Directions button — open nav choice sheet (B2_10)
     const dirBtn = e.target.closest('[data-action="directions"]');
     if (dirBtn) {
       const restId = dirBtn.dataset.restaurantId;
@@ -230,7 +229,6 @@ function attachEventListeners() {
       return;
     }
 
-    // Star rating tap handler (MISSING-09)
     const starBtn = e.target.closest('.star-btn');
     if (starBtn) {
       if (!navigator.onLine) { showToast("Can't save while offline", 'error'); return; }
@@ -238,7 +236,6 @@ function attachEventListeners() {
       const restId     = starBtn.dataset.restaurantId;
       const current    = state.personalData.get(restId) || {};
       const ratingToSave = current.my_rating === newRating ? null : newRating;
-      // Optimistic UI
       const container = starBtn.closest('.star-rating--interactive');
       if (container) {
         container.querySelectorAll('.star-btn').forEach((b, i) => {
@@ -256,23 +253,19 @@ function attachEventListeners() {
     handlePersonalToggle(btn.dataset.id, btn.dataset.action);
   });
 
-  // ── Search input — 300ms debounce, min 2 chars (MISSING-07) ──
+  // Search input — 300ms debounce
   let searchDebounceTimer;
   dom.searchInput?.addEventListener('input', (e) => {
     clearTimeout(searchDebounceTimer);
     const q = e.target.value.trim();
     state.searchQuery = q;
-
-    // Show/hide clear button
     if (dom.searchClearBtn) {
       dom.searchClearBtn.classList.toggle('search-clear-btn--visible', q.length > 0);
       dom.searchClearBtn.hidden = q.length === 0;
     }
-
     searchDebounceTimer = setTimeout(applyFiltersAndSearch, 300);
   });
 
-  // Clear button
   dom.searchClearBtn?.addEventListener('click', () => {
     state.searchQuery = '';
     if (dom.searchInput) dom.searchInput.value = '';
@@ -283,14 +276,11 @@ function attachEventListeners() {
     applyFiltersAndSearch();
   });
 
-  // ── View toggle (All / Wishlist / Visited) — MISSING-11 ──
-  // Spec: docs/design/MISSING_FEATURES.md — MISSING-11
-  // 'all' = show all; 'wishlist' = wishlisted only; 'visited' = visited only
-  // Combines with other active filters using AND logic — does NOT clear existing filters
+  // View toggle (All / Wishlist / Visited)
   dom.viewToggle?.addEventListener('click', (e) => {
     const btn = e.target.closest('.view-toggle__btn');
     if (!btn) return;
-    const mode = btn.dataset.mode; // 'all', 'wishlist', 'visited'
+    const mode = btn.dataset.mode;
     if (!mode) return;
     state.viewMode = mode;
     dom.viewToggle.querySelectorAll('.view-toggle__btn').forEach(b => {
@@ -300,10 +290,6 @@ function attachEventListeners() {
   });
 
   /* ── Sort sheet ──────────────────────────────────────────── */
-  // Spec: docs/design/MISSING_FEATURES.md — MISSING-14
-  // Sort button opens sheet; sheet shows 3 options; 'nearest' disabled if no GPS.
-  // Selecting option updates state.sortOrder and calls applyFiltersAndSearch().
-
   function showSortSheet() {
     const options = [
       { key: 'nearest', label: 'Nearest first', disabled: state.locationStatus !== 'granted' },
@@ -340,12 +326,8 @@ function attachEventListeners() {
   dom.sortBtn?.addEventListener('click', showSortSheet);
 
   /* ── Pull-to-refresh ─────────────────────────────────────── */
-  // Spec: docs/design/MISSING_FEATURES.md — MISSING-13
-  // Detects downward pull when list is scrolled to top.
-  // Pull threshold: 60px. Calls refreshFromNetwork() on release.
-  // passive:true on touchstart/touchmove — required for iOS scroll performance.
   (function initPullToRefresh() {
-    const listContainer = dom.cardList?.parentElement; // div.view__content
+    const listContainer = dom.cardList?.parentElement;
     if (!listContainer) return;
 
     let startY = 0;
@@ -413,20 +395,17 @@ async function handlePersonalToggle(id, action) {
   await upsertPersonalData(id, updates);
   showToast(toast);
 
-  // Refresh detail page if currently showing this restaurant
   if (state.selectedId === id && dom.viewDetail.classList.contains('view-detail--active')) {
     const r = state.restaurants.find(r => r.id === id);
     if (r) renderDetailPage(r);
   }
 
-  // Re-render card in list
   const cardEl = dom.cardList.querySelector(`[data-id="${id}"]`);
   if (cardEl) {
     const r = state.restaurants.find(r => r.id === id);
     if (r) cardEl.outerHTML = cardHTML(r);
   }
 
-  // Refresh map pin
   if (state.activeView === 'map') {
     const pin = state.mapPins.get(id);
     if (pin && state.map) {
@@ -444,21 +423,19 @@ async function init() {
   state.personalId = getOrCreatePersonalId();
   attachEventListeners();
   initKeyboardHandler();
-  initMap();      // Map is default — init early so tiles start loading
-  initRouter();   // Set up hashchange + handle initial hash
+  initMap();
+  initRouter();
 
   await Promise.allSettled([
     loadPersonalData(),
     fetchRestaurants(),
   ]);
 
-  // Render pins now that data is ready
   if (state.map && state.activeView === 'map') {
     state.map.invalidateSize();
     renderPins(state.filtered);
   }
 
-  // Handle any route that was pending (restaurant detail before data loaded)
   if (state.pendingRoute) {
     const pending = state.pendingRoute;
     state.pendingRoute = null;
