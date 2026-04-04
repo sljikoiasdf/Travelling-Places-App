@@ -426,6 +426,86 @@ function formatDistance(metres, precision) {
    NAVIGATION URLS
    ============================================================ */
 
+/* ── Navigation destination resolver ────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-03
+// Priority: exact/approximate coords → landmark coords → null
+// Returns { lat, lng, isApproximate, label } or null if no navigable destination
+
+function resolveNavDestination(restaurant) {
+  const p = restaurant.location_precision;
+
+  if ((p === 'exact' || p === 'approximate') && restaurant.lat && restaurant.lng) {
+    return {
+      lat: restaurant.lat,
+      lng: restaurant.lng,
+      isApproximate: p === 'approximate',
+      label: p === 'approximate' ? 'Location approximate' : null
+    };
+  }
+
+  if (restaurant.landmark_latitude && restaurant.landmark_longitude) {
+    return {
+      lat: restaurant.landmark_latitude,
+      lng: restaurant.landmark_longitude,
+      isApproximate: true,
+      label: 'Navigate to nearby landmark'
+    };
+  }
+
+  return null; // no navigable destination
+}
+
+/* ── Location block HTML builder ─────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-03
+// Renders cart-finder-box, landmark note, area/city, and directions button
+
+function locationBlockHTML(restaurant) {
+  const p    = restaurant.location_precision;
+  const dest = resolveNavDestination(restaurant);
+  let html   = '';
+
+  // Cart / no-location: show finder box prominently
+  if (!p || p === 'no_location' || p === 'area_only') {
+    if (restaurant.cart_identifier || restaurant.location_notes) {
+      html += `<div class="cart-finder-box">
+        <div class="cart-finder-box__label">How to find it</div>
+        ${restaurant.cart_identifier ? `<div class="cart-finder-box__text">${escapeHTML(restaurant.cart_identifier)}</div>` : ''}
+        ${restaurant.location_notes ? `<div class="cart-finder-box__text">${escapeHTML(restaurant.location_notes)}</div>` : ''}
+      </div>`;
+    }
+  }
+
+  // Nearby landmark note
+  if (restaurant.nearby_landmark_en) {
+    html += `<p class="landmark-note">Near: ${escapeHTML(restaurant.nearby_landmark_en)}</p>`;
+  }
+
+  // Area + city
+  const areaCity = [
+    restaurant.area ? restaurant.area.replace(/_/g, ' ') : null,
+    restaurant.city ? restaurant.city.replace(/_/g, ' ') : null
+  ].filter(Boolean).join(', ');
+  if (areaCity) html += `<p class="detail__area">${escapeHTML(areaCity)}</p>`;
+
+  // Directions button — precision-aware
+  if (dest) {
+    const navUrl = `https://maps.google.com/maps?q=${encodeURIComponent(dest.lat)},${encodeURIComponent(dest.lng)}(${encodeURIComponent(restaurant.name_en || restaurant.name_th || 'Restaurant')})`;
+    const approxBadge = dest.isApproximate && dest.label
+      ? `<span class="precision-badge">${escapeHTML(dest.label)}</span>`
+      : '';
+    html += `<div class="detail__directions-area">
+      ${approxBadge}
+      <a class="maps-btn" href="${escapeHTML(navUrl)}" rel="noopener noreferrer" aria-label="Get directions to ${escapeHTML(restaurant.name_en || restaurant.name_th || 'restaurant')}">Get Directions</a>
+    </div>`;
+  } else {
+    html += `<div class="detail__directions-area">
+      <a class="maps-btn maps-btn--disabled" href="${escapeHTML(mapsUrl(restaurant))}" rel="noopener noreferrer" aria-label="Search for ${escapeHTML(restaurant.name_en || restaurant.name_th || 'restaurant')} on Maps">Find on Maps</a>
+    </div>`;
+  }
+
+  return html;
+}
+
 function mapsUrl(restaurant) {
   if (restaurant.lat && restaurant.lng) {
     const lat  = encodeURIComponent(restaurant.lat);
@@ -807,7 +887,6 @@ function renderDetailPage(r) {
 
   const personal   = state.personalData.get(r.id) || {};
   const openStatus = isOpenNow(r.opening_hours);
-  const navHref    = mapsUrl(r);
 
   // Primary photo
   const photos       = Array.isArray(r.photos) ? r.photos : [];
@@ -859,7 +938,7 @@ function renderDetailPage(r) {
         ${r.name_en && r.name_th ? `<p class="card__name-english">${escapeHTML(r.name_en)}</p>` : ''}
       </div>
 
-      <a class="maps-btn" href="${escapeHTML(navHref)}" rel="noopener noreferrer" aria-label="Open in Maps">Open in Maps</a>
+      ${locationBlockHTML(r)}
 
       <div class="detail-section">
         ${cuisineDisplay ? `<div class="detail-row"><span class="detail-row__label">Cuisine</span><span class="detail-row__value">${escapeHTML(cuisineDisplay)}</span></div>` : ''}
