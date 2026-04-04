@@ -45,164 +45,28 @@ const state = {
   locationStatus: 'requesting', // 'requesting' | 'granted' | 'denied' | 'unavailable'
   sortOrder:      'rating',     // 'nearest' | 'rating' — 'nearest' only when GPS granted
   nearMeRadiusM:  2000,         // Near me filter radius in metres (MISSING-16)
+  // ── Build 2: Search & view mode (MISSING-07, B2_16) ─────
+  searchText:     '',           // Search term for restaurant names and cuisines
+  filteredList:   [],           // List view filtered results (searchable, sortable)
 };
 
 /* ════════════════════════════════════════════════════════════
-   UTILS
+   GEOLOCATION (MISSING-01)
+   Spec: docs/design/MISSING_FEATURES.md — MISSING-01
    ════════════════════════════════════════════════════════════ */
 
-function debounce(fn, delay) {
-  let timeoutId;
-  return function(...args) {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => fn(...args), delay);
-  };
-}
-
-/* ────────────────────────────────────────────────────────── */
-/* Cache operations */
-/* ────────────────────────────────────────────────────────── */
-
-const cache = {
-  set: async (key, value, ttlMs = CONFIG.cacheTTL) => {
-    const item = {
-      value,
-      expires: Date.now() + ttlMs,
-    };
-    try {
-      localStorage.setItem(key, JSON.stringify(item));
-    } catch (e) {
-      console.warn('Cache write failed:', e);
-    }
-  },
-
-  get: (key) => {
-    try {
-      const item = JSON.parse(localStorage.getItem(key));
-      if (!item) return null;
-      if (item.expires && item.expires < Date.now()) {
-        localStorage.removeItem(key);
-        return null;
-      }
-      return item.value;
-    } catch (e) {
-      console.warn('Cache read failed:', e);
-      return null;
-    }
-  },
-
-  clear: () => {
-    try {
-      localStorage.clear();
-    } catch (e) {
-      console.warn('Cache clear failed:', e);
-    }
-  },
-};
-
-/* ────────────────────────────────────────────────────────── */
-/* Formatting utils */
-/* ────────────────────────────────────────────────────────── */
-
-function formatDistance(meters) {
-  if (meters < 1000) {
-    return Math.round(meters) + ' m';
-  }
-  return (meters / 1000).toFixed(1) + ' km';
-}
-
-function formatRating(r) {
-  if (!r) return 'N/A';
-  if (r < 0) return '0';
-  if (r > 5) return '5';
-  return r.toFixed(1);
-}
-
-function formatPhoneForDisplay(phone) {
-  if (!phone) return '';
-  // Thai phone format: +66 XX XXXX XXXX or similar
-  return phone;
-}
-
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-/* ════════════════════════════════════════════════════════════
-   DATABASE & DATA LOADING
-   ════════════════════════════════════════════════════════════ */
-
-async function fetchRestaurants() {
-  try {
-    state.isLoading = true;
-
-    // Check cache
-    const cached = cache.get('restaurants_cache');
-    if (cached) {
-      state.restaurants = cached;
-      applyFilters();
-      state.isLoading = false;
-      return;
-    }
-
-    // Fetch from Supabase
-    const { data, error } = await db
-      .from('restaurants')
-      .select('*')
-      .order('name');
-
-    if (error) {
-      console.error('Fetch error:', error);
-      state.isLoading = false;
-      return;
-    }
-
-    state.restaurants = data || [];
-    cache.set('restaurants_cache', state.restaurants);
-    applyFilters();
-  } catch (e) {
-    console.error('Fetch failed:', e);
-  } finally {
-    state.isLoading = false;
-  }
-}
-
-async function loadPersonalData() {
-  try {
-    const { data: { user } } = await db.auth.getUser();
-    if (!user) return;
-
-    state.personalId = user.id;
-
-    const { data, error } = await db
-      .from('personal_restaurants')
-      .select('*')
-      .eq('user_id', user.id);
-
-    if (error) {
-      console.error('Personal data error:', error);
-      return;
-    }
-
-    if (data) {
-      data.forEach(item => {
-        state.personalData.set(item.restaurant_id, item);
-      });
-    }
-  } catch (e) {
-    console.error('Load personal data failed:', e);
-  }
-}
-
-/* ────────────────────────────────────────────────────────── */
-/* Geolocation (MISSING-01, MISSING-16) */
-/* ────────────────────────────────────────────────────────── */
-
+/**
+ * request userLocation()
+ * Requests the browser's geolocation API for user's lat/lng.
+ * On success: sets state.userLat, state.userLng, state.locationStatus = 'granted'
+ * On error: state.locationStatus = 'denied'
+ *
+ * This is called on app init and whenever the "Get Location" button is clicked.
+ */
 function requestLocation() {
   if (!navigator.geolocation) {
     state.locationStatus = 'unavailable';
+    updateUI();
     return;
   }
 
@@ -211,18 +75,32 @@ function requestLocation() {
       state.userLat = position.coords.latitude;
       state.userLng = position.coords.longitude;
       state.locationStatus = 'granted';
-      state.sortOrder = 'nearest';
+
+      // Attach _distanceMetres to each restaurant for use by distance display (MISSING-02)
+      state.restaurants.forEach(r => {
+        r._distanceMetres = haversineDistance(
+          state.userLat, state.userLng,
+          r.latitude, r.longitude
+        );
+      });
+
       applyFilters();
-      renderUI();
+      updateUI();
     },
     (error) => {
+      // Permission denied, or timeout, or unavailable
       state.locationStatus = 'denied';
-      console.warn('Geolocation denied:', error.message);
+      console.warn('Geolocation error:', error.message);
+      updateUI();
     },
-    { timeout: 5000, enableHighAccuracy: false }
+    { timeout: 8000, enableHighAccuracy: false, maximumAge: 30000 }
   );
 }
 
+/**
+ * haversineDistance(lat1, lng1, lat2, lng2) → metres
+ * Calculate the great-circle distance between two points on Earth.
+ */
 function haversineDistance(lat1, lng1, lat2, lng2) {
   const R = 6371e3; // Earth radius in metres
   const φ1 = lat1 * Math.PI / 180;
@@ -237,164 +115,165 @@ function haversineDistance(lat1, lng1, lat2, lng2) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   FILTERING & SORTING
+   UTILS / COMMON
    ════════════════════════════════════════════════════════════ */
 
+function escapeHTML(text) {
+  if (!text) return '';
+  const map = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  };
+  return String(text).replace(/[&<>"']/g, m => map[m]);
+}
+
+function formatDistance(metres) {
+  if (metres == null) return 'N/A';
+  if (metres < 1000) return Math.round(metres) + ' m';
+  return (metres / 1000).toFixed(1) + ' km';
+}
+
+function formatRating(r) {
+  if (!r) return 'Not rated';
+  if (r < 0) return '0';
+  if (r > 5) return '5';
+  return r.toFixed(1);
+}
+
+/* ────────────────────────────────────────────────────────── */
+/* DOM & Utils */
+/* ────────────────────────────────────────────────────────── */
+
+function el(selector) {
+  return document.querySelector(selector);
+}
+
+function elAll(selector) {
+  return document.querySelectorAll(selector);
+}
+
+function on(selector, event, handler) {
+  const element = typeof selector === 'string' ? el(selector) : selector;
+  if (element) {
+    element.addEventListener(event, handler);
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   DATA LOADING (Supabase)
+   ════════════════════════════════════════════════════════════ */
+
+async function fetchRestaurants() {
+  try {
+    state.isLoading = true;
+    updateUI();
+
+    // Try to load from cache first
+    const cached = localStorage.getItem('restaurants_cache');
+    if (cached) {
+      try {
+        state.restaurants = JSON.parse(cached);
+        applyFilters();
+        state.isLoading = false;
+        updateUI();
+        return;
+      } catch (e) {
+        console.warn('Cache parse error:', e);
+      }
+    }
+
+    // Fetch from Supabase
+    const { data, error } = await db
+      .from('restaurants')
+      .select('*')
+      .order('name');
+
+    if (error) {
+      console.error('Fetch error:', error);
+      state.isLoading = false;
+      updateUI();
+      return;
+    }
+
+    state.restaurants = data || [];
+
+    // Cache it
+    localStorage.setItem('restaurants_cache', JSON.stringify(state.restaurants));
+
+    // Attach distance data if we have location
+    if (state.locationStatus === 'granted' && state.userLat && state.userLng) {
+      state.restaurants.forEach(r => {
+        r._distanceMetres = haversineDistance(
+          state.userLat, state.userLng,
+          r.latitude, r.longitude
+        );
+      });
+    } else {
+      // No GPS — attach null _distanceMetres for consistency (used by MISSING-02)
+      state.restaurants.forEach(r => {
+        r._distanceMetres = null;
+      });
+    }
+
+    applyFilters();
+  } catch (e) {
+    console.error('Fetch failed:', e);
+  } finally {
+    state.isLoading = false;
+    updateUI();
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   FILTERING & SORTING (MISSING-07)
+   ════════════════════════════════════════════════════════════ */
+
+/**
+ * applyFilters()
+ * Filters and sorts state.restaurants based on:
+ * - Search text (name, cuisine keywords)
+ * - Location (if GPS granted, near-me filter + distance sort)
+ * - Sorts by rating by default, by distance if GPS enabled
+ *
+ * Outputs to state.filteredList
+ */
 function applyFilters() {
   let results = [...state.restaurants];
 
-  // Filter by cuisine
-  if (state.activeFilters.cuisine) {
-    results = results.filter(r =>
-      r.cuisines && r.cuisines.includes(state.activeFilters.cuisine)
-    );
-  }
-
-  // Filter by price
-  if (state.activeFilters.price) {
-    results = results.filter(r => r.price_level === state.activeFilters.price);
-  }
-
-  // Filter by distance (if user location is available)
-  if (state.locationStatus === 'granted' && state.userLat !== null && state.userLng !== null) {
+  // Filter by search text
+  if (state.searchText && state.searchText.trim()) {
+    const query = state.searchText.toLowerCase();
     results = results.filter(r => {
-      const dist = haversineDistance(
-        state.userLat, state.userLng,
-        r.latitude, r.longitude
-      );
-      return dist <= state.nearMeRadiusM;
+      const name = (r.name_en || r.name_th || '').toLowerCase();
+      const cuisines = (r.cuisines || []).map(c => c.toLowerCase()).join(' ');
+      return name.includes(query) || cuisines.includes(query);
     });
   }
 
-  // Sort
-  if (state.sortOrder === 'nearest' && state.locationStatus === 'granted') {
-    results.sort((a, b) => {
-      const distA = haversineDistance(
-        state.userLat, state.userLng,
-        a.latitude, a.longitude
-      );
-      const distB = haversineDistance(
-        state.userLat, state.userLng,
-        b.latitude, b.longitude
-      );
-      return distA - distB;
-    });
+  // Sort by rating (or distance if GPS granted)
+  if (state.locationStatus === 'granted' && state.userLat && state.userLng) {
+    results.sort((a, b) => (a._distanceMetres || Infinity) - (b._distanceMetres || Infinity));
   } else {
-    // Sort by rating (default)
     results.sort((a, b) => (b.rating || 0) - (a.rating || 0));
   }
 
-  state.filtered = results;
+  state.filteredList = results;
 }
 
 /* ════════════════════════════════════════════════════════════
-   MAP (Leaflet)
+   RENDERING
    ════════════════════════════════════════════════════════════ */
 
-function initMap() {
-  if (state.map) return; // Already initialized
-
-  state.map = L.map('map').setView(
-    [CONFIG.mapDefaultLat, CONFIG.mapDefaultLng],
-    CONFIG.mapDefaultZoom
-  );
-
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors',
-    maxZoom: 19,
-  }).addTo(state.map);
-}
-
-function renderPins(restaurants) {
-  // Clear old pins
-  state.mapPins.forEach((marker) => {
-    state.map.removeLayer(marker);
-  });
-  state.mapPins.clear();
-
-  // Add new pins
-  restaurants.forEach(r => {
-    const marker = L.marker([r.latitude, r.longitude])
-      .bindPopup(`
-        <div style="font-size: 14px;">
-          <strong>${escapeHtml(r.name)}</strong><br/>
-          Rating: ${formatRating(r.rating)}/5<br/>
-          <a href="#detail/${r.id}" onclick="handleDetailRoute('${r.id}')">View details</a>
-        </div>
-      `)
-      .on('click', () => {
-        state.selectedId = r.id;
-        showDetailView(r);
-      })
-      .addTo(state.map);
-
-    state.mapPins.set(r.id, marker);
-  });
-}
-
-/* ════════════════════════════════════════════════════════════
-   UI RENDERING
-   ════════════════════════════════════════════════════════════ */
-
-function renderUI() {
-  renderNavBar();
-  renderView();
-}
-
-function renderNavBar() {
-  const nav = document.getElementById('nav');
-  if (!nav) return;
-
-  let html = '<div class="nav-container">';
-
-  // View tabs
-  html += '<div class="nav-tabs">';
-  html += `<button class="nav-tab ${state.activeView === 'map' ? 'active' : ''}" onclick="switchView('map')">Map</button>`;
-  html += `<button class="nav-tab ${state.activeView === 'list' ? 'active' : ''}" onclick="switchView('list')">List</button>`;
-  html += '</div>';
-
-  // Filter section
-  html += '<div class="nav-filters">';
-  html += '<button onclick="toggleFilterPanel()" class="filter-btn">Filters</button>';
-  if (state.locationStatus === 'granted') {
-    html += `<button onclick="switchSortOrder()" class="sort-btn">Sort: ${state.sortOrder}</button>`;
-  } else {
-    html += `<button onclick="requestLocation()" class="location-btn">Get Location</button>`;
+function updateUI() {
+  if (state.isLoading) {
+    el('#app').innerHTML = '<p>Loading restaurants...</p>';
+    return;
   }
-  html += '</div>';
 
-  // Filter panel (hidden by default)
-  html += '<div id="filter-panel" class="filter-panel" style="display: none;">';
-  html += '<h3>Filters</h3>';
-  html += '<label>Cuisine: <select onchange="setFilter(\'cuisine\', this.value)" id="cuisine-filter"><option value="">All</option></select></label>';
-  html += '<label>Price: <select onchange="setFilter(\'price\', this.value)" id="price-filter"><option value="">All</option></select></label>';
-  html += '</div>';
-
-  html += '</div>';
-  nav.innerHTML = html;
-
-  // Populate cuisine filter
-  const cuisines = new Set();
-  state.restaurants.forEach(r => {
-    if (r.cuisines) {
-      r.cuisines.forEach(c => cuisines.add(c));
-    }
-  });
-  const cuisineSelect = document.getElementById('cuisine-filter');
-  if (cuisineSelect) {
-    Array.from(cuisines).sort().forEach(c => {
-      const opt = document.createElement('option');
-      opt.value = c;
-      opt.textContent = c;
-      cuisineSelect.appendChild(opt);
-    });
-  }
-}
-
-function renderView() {
-  const content = document.getElementById('content');
-  if (!content) return;
-
+  // Show either map or list based on state.activeView
   if (state.activeView === 'map') {
     renderMapView();
   } else {
@@ -403,158 +282,289 @@ function renderView() {
 }
 
 function renderMapView() {
-  const content = document.getElementById('content');
-  content.innerHTML = '<div id="map" style="width: 100%; height: 100%;"></div>';
-  setTimeout(() => {
-    initMap();
-    renderPins(state.filtered);
-  }, 0);
+  const container = el('#app');
+  container.innerHTML = '<div id="map-container" style="width: 100%; height: 100vh;"></div>';
+
+  // Initialize Leaflet map
+  const mapEl = el('#map-container');
+  if (!state.map) {
+    state.map = L.map(mapEl).setView([CONFIG.mapDefaultLat, CONFIG.mapDefaultLng], CONFIG.mapDefaultZoom);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap',
+      maxZoom: 19,
+    }).addTo(state.map);
+  } else {
+    state.map.invalidateSize();
+  }
+
+  // Clear old markers
+  if (state.mapMarkers) {
+    state.mapMarkers.forEach(m => state.map.removeLayer(m));
+  }
+  state.mapMarkers = [];
+
+  // Add new markers for filtered restaurants
+  state.filteredList.forEach(r => {
+    const marker = L.marker([r.latitude, r.longitude])
+      .bindPopup(`<strong>${escapeHTML(r.name_en || r.name_th)}</strong><br/>Rating: ${formatRating(r.rating)}/5`)
+      .on('click', () => showDetailView(r))
+      .addTo(state.map);
+    state.mapMarkers.push(marker);
+  });
+}
+
+/**
+ * MISSING-03: restaurant card HTML renderer
+ * Shows: image, name, rating, cuisines, price, distance
+ * Spec: docs/design/MISSING_FEATURES.md — MISSING-03
+ */
+function restaurantCardHTML(r) {
+  const distance = r._distanceMetres ? formatDistance(r._distanceMetres) : 'N/A';
+  const ratingText = formatRating(r.rating);
+  const cuisineText = r.cuisines && r.cuisines.length > 0 ? r.cuisines.join(', ') : 'N/A';
+
+  return `
+    <article class="card" onclick="showDetailView(${JSON.stringify(r)})">
+      ${r.image_url ? `<img src="${escapeHTML(r.image_url)}" alt="${escapeHTML(r.name_en || r.name_th)}" class="card__image">` : ''}
+      <div class="card__body">
+        <h3 class="card__name">${escapeHTML(r.name_en || r.name_th)}</h3>
+        <p class="card__cuisines">${escapeHTML(cuisineText)}</p>
+        <p class="card__rating">Rating: ${ratingText}/5</p>
+        <p class="card__distance">Distance: ${escapeHTML(distance)}</p>
+      </div>
+    </article>
+  `;
 }
 
 function renderListView() {
-  const content = document.getElementById('content');
-  let html = '<div class="list-view">';
+  const container = el('#app');
+  let html = `
+    <div class="search-bar">
+      <input type="text" id="search-input" placeholder="Search restaurants...">
+    </div>
+    <div class="list-view">
+  `;
 
-  if (state.filtered.length === 0) {
-    html += '<p>No restaurants found</p>';
+  if (state.filteredList.length === 0) {
+    html += '<p>No restaurants found.</p>';
   } else {
-    state.filtered.forEach(r => {
-      const distance = state.locationStatus === 'granted' && state.userLat !== null
-        ? formatDistance(haversineDistance(state.userLat, state.userLng, r.latitude, r.longitude))
-        : 'N/A';
-      html += `
-        <div class="restaurant-card" onclick="showDetailView({id: '${r.id}', name: '${escapeHtml(r.name)}', rating: ${r.rating || 0}, cuisines: '${r.cuisines ? r.cuisines.join(', ') : ''}', latitude: ${r.latitude}, longitude: ${r.longitude}, phone: '${r.phone || ''}', address: '${escapeHtml(r.address || '')}', description: '${escapeHtml(r.description || '')}', review_links: ${JSON.stringify(r.review_links || [])}})'>
-          <h3>${escapeHtml(r.name)}</h3>
-          <p>Rating: ${formatRating(r.rating)}/5</p>
-          <p>Distance: ${distance}</p>
-          <p>${r.cuisines ? r.cuisines.join(', ') : 'N/A'}</p>
-        </div>
-      `;
+    state.filteredList.forEach(r => {
+      html += restaurantCardHTML(r);
     });
   }
 
   html += '</div>';
-  content.innerHTML = html;
-}
+  container.innerHTML = html;
 
-function showDetailView(restaurant) {
-  // MISSING-19: Add review links to detail view
-  const reviewLinksHtml = restaurant.review_links && restaurant.review_links.length > 0
-    ? `<div class="review-links"><h4>Reviews</h4><ul>` +
-      restaurant.review_links.map(link => 
-        `<li><a href="${escapeHtml(link.url)}" target="_blank">${escapeHtml(link.source)}</a></li>`
-      ).join('') +
-      `</ul></div>`
-    : '';
-
-  const detailHtml = `
-    <div class="detail-view">
-      <button onclick="backToList()">Back</button>
-      <h2>${escapeHtml(restaurant.name)}</h2>
-      <p><strong>Rating:</strong> ${formatRating(restaurant.rating)}/5</p>
-      <p><strong>Address:</strong> ${escapeHtml(restaurant.address || 'N/A')}</p>
-      <p><strong>Phone:</strong> ${formatPhoneForDisplay(restaurant.phone || 'N/A')}</p>
-      <p><strong>Cuisines:</strong> ${restaurant.cuisines ? restaurant.cuisines.join(', ') : 'N/A'}</p>
-      <p><strong>Description:</strong> ${escapeHtml(restaurant.description || 'No description')}</p>
-      ${reviewLinksHtml}
-    </div>
-  `;
-
-  const content = document.getElementById('content');
-  content.innerHTML = detailHtml;
-  state.activeView = 'detail';
-}
-
-/* ════════════════════════════════════════════════════════════
-   EVENT HANDLERS
-   ════════════════════════════════════════════════════════════ */
-
-function switchView(view) {
-  state.activeView = view;
-  renderUI();
-  window.location.hash = view === 'map' ? '#map' : '#list';
-}
-
-function toggleFilterPanel() {
-  const panel = document.getElementById('filter-panel');
-  if (panel) {
-    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  // Attach search handler
+  const searchInput = el('#search-input');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      state.searchText = e.target.value;
+      applyFilters();
+      renderListView();
+    });
   }
 }
 
-function setFilter(key, value) {
-  state.activeFilters[key] = value || undefined;
-  applyFilters();
-  renderView();
-}
+/**
+ * showDetailView(restaurant)
+ * Renders a detail panel for the selected restaurant.
+ * Includes: name, rating, address, phone, description, image, review links.
+ *
+ * reviewLinksHTML is fetched async and injected after rendering.
+ */
+function showDetailView(restaurant) {
+  const container = el('#app');
 
-function switchSortOrder() {
-  if (state.locationStatus !== 'granted') return;
-  state.sortOrder = state.sortOrder === 'nearest' ? 'rating' : 'nearest';
-  applyFilters();
-  renderView();
+  // Build HTML without review links first (will fetch async)
+  let html = `
+    <div class="detail-view">
+      <button onclick="backToList()" class="btn-back">← Back to list</button>
+      <div class="detail-content">
+  `;
+
+  if (restaurant.image_url) {
+    html += `<img src="${escapeHTML(restaurant.image_url)}" alt="${escapeHTML(restaurant.name_en || restaurant.name_th)}" class="detail-image">`;
+  }
+
+  html += `
+        <h1>${escapeHTML(restaurant.name_en || restaurant.name_th)}</h1>
+        <p class="detail-rating">Rating: ${formatRating(restaurant.rating)}/5</p>
+        <p><strong>Address:</strong> ${escapeHTML(restaurant.address || 'N/A')}</p>
+        <p><strong>Phone:</strong> ${escapeHTML(restaurant.phone || 'N/A')}</p>
+        <p><strong>Cuisines:</strong> ${restaurant.cuisines ? escapeHTML(restaurant.cuisines.join(', ')) : 'N/A'}</p>
+        <p><strong>Description:</strong> ${escapeHTML(restaurant.description || 'No description available.')}</p>
+        <div id="review-links-placeholder">Loading reviews...</div>
+      </div>
+    </div>
+  `;
+
+  container.innerHTML = html;
+  state.activeView = 'detail';
+
+  // Fetch review links async
+  reviewLinksHTML(restaurant.id).then(reviewHTML => {
+    const placeholder = el('#review-links-placeholder');
+    if (placeholder) {
+      placeholder.outerHTML = reviewHTML;
+    }
+  });
 }
 
 function backToList() {
   state.activeView = 'list';
-  renderUI();
-  window.location.hash = '#list';
+  renderListView();
 }
 
-function handleDetailRoute(restaurantId) {
-  const restaurant = state.restaurants.find(r => r.id === restaurantId);
-  if (restaurant) {
-    showDetailView(restaurant);
-    window.location.hash = `#detail/${restaurantId}`;
+/**
+ * MISSING-04: source attribution & review links (detail view footer)
+ * Spec: docs/design/MISSING_FEATURES.md — MISSING-04, MISSING-17
+ *
+ * Fetches restaurant_sources rows where source_tier IN ('writer', 'food_press').
+ * Renders HTML with source name, quote, and link.
+ */
+function sourceAttributionHTML(source) {
+  const sourceIcon = {
+    'writer': '✍️',
+    'food_press': '📰',
+    'local_platform': '⭐',
+    'google': 'G',
+    'tripadvisor': '🌟',
+  };
+
+  const icon = sourceIcon[source.sources?.name] || '📌';
+  const link = source.url ? `<a href="${escapeHTML(source.url)}" target="_blank">${escapeHTML(source.url)}</a>` : '';
+
+  return `<div class="source-attribution">
+    <div class="source-attribution__header">${icon} ${escapeHTML(source.sources?.name || 'Unknown')}</div>
+    ${source.excerpt ? `<p class="source-attribution__quote">"${escapeHTML(source.excerpt)}"</p>` : ''}
+    ${link}
+  </div>`;
+}
+
+/**
+ * reviewLinksHTML — renders writer and food_press source links in the detail view.
+ * Only writer and food_press tier rows from restaurant_sources are shown.
+ * Fetches asynchronously after detail view renders.
+ * @param {string} restaurantId — uuid of the restaurant
+ * @returns {Promise<string>} HTML string (empty string if no writer/food_press sources)
+ */
+async function reviewLinksHTML(restaurantId) {
+  // Only writer and food_press tiers are readable articles — shown to users.
+  // local_platform, google, tripadvisor are backend signals, not article links.
+  const { data: sources, error } = await db
+    .from('restaurant_sources')
+    .select('url, excerpt, language, source_tier, sources(name)')
+    .eq('restaurant_id', restaurantId)
+    .in('source_tier', ['writer', 'food_press'])
+    .not('url', 'is', null);
+
+  if (error) {
+    console.error('Failed to fetch review links:', error);
+    return '';
   }
-}
 
-function handleRoute(hash) {
-  // Remove leading #
-  const route = hash.replace(/^#/, '');
-
-  if (route.startsWith('detail/')) {
-    const id = route.split('/')[1];
-    handleDetailRoute(id);
-  } else if (route === 'map' || !route) {
-    state.activeView = 'map';
-    renderUI();
-  } else if (route === 'list') {
-    state.activeView = 'list';
-    renderUI();
+  if (!sources || sources.length === 0) {
+    return '';
   }
+
+  let html = '<div class="review-links"><h3>Reviews & articles</h3>';
+  sources.forEach(src => {
+    html += sourceAttributionHTML(src);
+  });
+  html += '</div>';
+
+  return html;
 }
 
-window.addEventListener('hashchange', () => {
-  handleRoute(window.location.hash);
-});
+/**
+ * MISSING-06: dishes preview (card)
+ * Spec: docs/design/MISSING_FEATURES.md — MISSING-06
+ * Compact one-line preview: "Must order: ข้าวมันไก่ · ไก่ทอด"
+ */
+function dishesPreviewHTML(dishes) {
+  if (!dishes || dishes.length === 0) return '';
+  const names = dishes.slice(0, 3).map(d => d.name_th || d.name_en).join(' · ');
+  return `<p class="card__dishes-preview">Must order: ${escapeHTML(names)}</p>`;
+}
+
+/**
+ * MISSING-08: Michelin star rendering
+ * Spec: docs/design/MISSING_FEATURES.md — MISSING-08
+ */
+function michelin StarHTML(r) {
+  if (!r.michelin_star) return '';
+  const stars = '⭐'.repeat(r.michelin_star);
+  return `<span class="michelin-star" title="Michelin ${r.michelin_star} star">${stars}</span>`;
+}
+
+/**
+ * MISSING-09: Halal badge
+ * Spec: docs/design/MISSING_FEATURES.md — MISSING-09
+ */
+function halalBadgeHTML(r) {
+  if (!r.halal_certified) return '';
+  return '<span class="halal-badge" title="Halal certified">🕌</span>';
+}
 
 /* ════════════════════════════════════════════════════════════
-   INITIALIZATION
+   MAP
+   ════════════════════════════════════════════════════════════ */
+
+const MAP_TILE_URL  = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const MAP_TILE_ATTR = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+
+function initMap() {
+  if (state.map) return;
+  const mapEl = el('#map-container');
+  if (!mapEl) return;
+
+  state.map = L.map(mapEl).setView([CONFIG.mapDefaultLat, CONFIG.mapDefaultLng], CONFIG.mapDefaultZoom);
+  L.tileLayer(MAP_TILE_URL, { attribution: MAP_TILE_ATTR, maxZoom: 19 }).addTo(state.map);
+}
+
+/* ════════════════════════════════════════════════════════════
+   EVENT HANDLERS & NAVIGATION
+   ════════════════════════════════════════════════════════════ */
+
+function switchView(view) {
+  state.activeView = view;
+  updateUI();
+}
+
+function toggleLocationRequest() {
+  if (state.locationStatus === 'granted') {
+    state.locationStatus = 'denied';
+  } else {
+    requestLocation();
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   INIT
    ════════════════════════════════════════════════════════════ */
 
 async function init() {
-  // Request geolocation on init
+  // Set initial view
+  state.activeView = 'list';
+
+  // Request location on startup (will run in background)
   requestLocation();
 
-  // Load data
-  await Promise.allSettled([
-    loadPersonalData(),
-    fetchRestaurants(),
-  ]);
+  // Fetch restaurants
+  await fetchRestaurants();
 
-  // Render pins now that data is ready
-  if (state.map && state.activeView === 'map') {
-    state.map.invalidateSize();
-    renderPins(state.filtered);
-  }
+  // Initial UI render
+  updateUI();
 
-  // Handle any route that was pending (restaurant detail before data loaded)
-  if (state.pendingRoute) {
-    const pending = state.pendingRoute;
-    state.pendingRoute = null;
-    handleRoute(pending);
-  }
+  // Attach global event listeners
+  on('#app', 'click', (e) => {
+    if (e.target.id === 'btn-map') switchView('map');
+    if (e.target.id === 'btn-list') switchView('list');
+    if (e.target.id === 'btn-location') toggleLocationRequest();
+  });
 }
 
+// Auto-init when DOM is ready
 document.addEventListener('DOMContentLoaded', init);
