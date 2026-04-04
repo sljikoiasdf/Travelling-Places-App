@@ -44,6 +44,7 @@ const state = {
   userLng:        null,         // GPS longitude — set by requestLocation()
   locationStatus: 'requesting', // 'requesting' | 'granted' | 'denied' | 'unavailable'
   sortOrder:      'rating',     // 'nearest' | 'rating' — 'nearest' only when GPS granted
+  nearMeRadiusM:  2000,         // Near me filter radius in metres (MISSING-16)
   // ── Build 2: Search & view mode (MISSING-07, B2_16) ─────
   searchQuery:    '',           // Free-text search query
   viewMode:       'all',        // 'all' | 'wishlist' | 'visited'
@@ -83,991 +84,414 @@ const dom = {
 /* ============================================================
    INDEXEDDB CACHE
    ============================================================ */
-
 const IDB_NAME    = 'thailand-food';
 const IDB_VERSION = 1;
-const IDB_STORE   = 'cache';
-const CACHE_KEY   = 'restaurants_v1';
+const IDB_STORE   = 'restaurants';
 
 function openIDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(IDB_NAME, IDB_VERSION);
-    req.onupgradeneeded = (e) => { e.target.result.createObjectStore(IDB_STORE); };
-    req.onsuccess = (e) => resolve(e.target.result);
-    req.onerror   = (e) => reject(e.target.error);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) {
+        db.createObjectStore(IDB_STORE, { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
   });
 }
 
-async function getCached(key) {
+async function readFromIDB() {
   try {
-    const idb  = await openIDB();
-    const data = await new Promise((resolve, reject) => {
-      const tx  = idb.transaction(IDB_STORE, 'readonly');
-      const req = tx.objectStore(IDB_STORE).get(key);
-      req.onsuccess = (e) => resolve(e.target.result);
-      req.onerror   = (e) => reject(e.target.error);
+    const db   = await openIDB();
+    const tx   = db.transaction(IDB_STORE, 'readonly');
+    const store = tx.objectStore(IDB_STORE);
+    return new Promise((resolve, reject) => {
+      const req = store.getAll();
+      req.onsuccess = e => resolve(e.target.result);
+      req.onerror   = e => reject(e.target.error);
     });
-    if (!data) return null;
-    if (Date.now() - data.timestamp > CONFIG.cacheTTL) return null;
-    return data.value;
-  } catch (err) {
-    console.warn('[cache] getCached failed:', err);
-    return null;
-  }
+  } catch { return []; }
 }
 
-async function setCached(key, value) {
+async function writeToIDB(records) {
   try {
-    const idb = await openIDB();
-    await new Promise((resolve, reject) => {
-      const tx  = idb.transaction(IDB_STORE, 'readwrite');
-      const req = tx.objectStore(IDB_STORE).put({ value, timestamp: Date.now() }, key);
-      req.onsuccess = resolve;
-      req.onerror   = (e) => reject(e.target.error);
+    const db    = await openIDB();
+    const tx    = db.transaction(IDB_STORE, 'readwrite');
+    const store = tx.objectStore(IDB_STORE);
+    records.forEach(r => store.put(r));
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = resolve;
+      tx.onerror    = e => reject(e.target.error);
     });
-  } catch (err) {
-    console.warn('[cache] setCached failed:', err);
-  }
+  } catch { /* silent */ }
 }
 
 /* ============================================================
-   GEOLOCATION (MISSING-01)
-   Spec: docs/design/MISSING_FEATURES.md — MISSING-01
+   SUPABASE DATA LAYER
    ============================================================ */
 
-/* ── GPS request ─────────────────────────────────────────────
-   Requests location on app open; sets state.userLat/Lng and
-   state.locationStatus. Timeout: 8s. No localStorage persist.
-   ────────────────────────────────────────────────────────── */
-async function requestLocation() {
-  if (!navigator.geolocation) {
-    state.locationStatus = 'unavailable';
-    return;
-  }
-  state.locationStatus = 'requesting';
-  return new Promise((resolve) => {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        state.userLat = pos.coords.latitude;
-        state.userLng = pos.coords.longitude;
-        state.locationStatus = 'granted';
-        state.sortOrder = 'nearest';
-        resolve();
-      },
-      () => {
-        // Denied or error
-        state.locationStatus = 'denied';
-        resolve();
-      },
-      { timeout: 8000, maximumAge: 60000, enableHighAccuracy: false }
-    );
-  });
-}
-
-/* ── Haversine distance calculator ──────────────────────────
-   Returns distance in metres between two lat/lng coordinates.
-   Used as fallback when RPC does not return dist_metres.
-   ────────────────────────────────────────────────────────── */
-function haversineDistance(lat1, lng1, lat2, lng2) {
-  if (!lat1 || !lng1 || !lat2 || !lng2) return null;
-  const R = 6371000; // Earth radius in metres
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-/* ── GPS status notice ───────────────────────────────────────
-   Shows a notice when GPS is denied/unavailable.
-   Reads #location-notice element in index.html.
-   ────────────────────────────────────────────────────────── */
-function renderLocationNotice() {
-  const el = document.getElementById('location-notice');
-  if (!el) return;
-  if (state.locationStatus === 'denied' || state.locationStatus === 'unavailable') {
-    el.textContent = 'Showing all restaurants — enable location for proximity sorting';
-    el.hidden = false;
-  } else {
-    el.hidden = true;
-  }
-}
-
-/* ============================================================
-   DATA FETCH
-   ============================================================ */
-
-async function fetchRestaurants() {
-  state.isLoading = true;
-  renderLoadingState();
-
-  // Request GPS first — completes before data fetch (8s timeout max)
-  await requestLocation();
-
-  // Try cache first (cache is location-agnostic — stores full restaurant list)
-  const cached = await getCached(CACHE_KEY);
-  if (cached) {
-    state.restaurants = cached;
-    applyFiltersAndSearch();
-    state.isLoading = false;
-    refreshFromNetwork().catch(() => {});
-    return;
-  }
-
-  await refreshFromNetwork();
-}
+/* ── Field list shared by both SELECT paths ─────────────────
+   NOTE: Kept in sync with ARCHITECTURE.md#restaurants columns.
+   Any new column used in UI must be added here AND to the RPC
+   path in refreshFromNetwork() if needed.                    */
+const RESTAURANT_FIELDS = `
+  id, name_th, name_en, slug, city, area,
+  cuisine_types, price_range, is_halal, michelin_stars, michelin_bib,
+  lat, lng, google_maps_url, wongnai_url, facebook_url, phone,
+  opening_hours, cover_photo_url, photos, notes, dishes,
+  legacy_note, source_quote_th, source_url, wongnai_rating,
+  is_area_only, created_at
+`.trim();
 
 async function refreshFromNetwork() {
+  if (state.isLoading) return;
+  state.isLoading = true;
+
   try {
-    let data, error;
+    let rows;
 
     if (state.locationStatus === 'granted' && state.userLat && state.userLng) {
-      // GPS available — use nearby_restaurants RPC (sorted by distance)
-      // radius_m: 50000 (50km) — returns all restaurants within 50km of user
-      ({ data, error } = await db.rpc('nearby_restaurants', {
+      // GPS path — RPC that returns distance-sorted results
+      const { data, error } = await db.rpc('restaurants_near', {
         user_lat: state.userLat,
         user_lng: state.userLng,
-        radius_m: 50000,
-        limit_n:  100
-      }));
+        radius_m: CONFIG.nearbyRadiusM,
+        lim:      CONFIG.nearbyLimit,
+      });
+      if (error) throw error;
 
-      // Attach _distanceMetres to each restaurant for use by distance display (MISSING-02)
-      // RPC returns dist_metres column; fall back to haversine if null
-      if (data) {
-        data = data.map(r => ({
-          ...r,
-          _distanceMetres: r.dist_metres != null
-            ? r.dist_metres
-            : haversineDistance(state.userLat, state.userLng, r.lat, r.lng)
-        }));
-      }
+      // RPC returns a subset; merge with any cached data for offline completeness
+      rows = data || [];
+
     } else {
-      // No GPS — fetch all restaurants sorted by rating
-      ({ data, error } = await db
+      // No GPS — fetch all restaurants with expanded field set
+      const { data, error } = await db
         .from('restaurants')
         .select(`
           id, name_th, name_en, slug, city, area,
-          location_precision, lat, lng,
-          cuisine_types, price_range, is_halal, is_vegetarian_friendly,
-          michelin_stars, michelin_bib,
-          opening_hours, phone, website, tagline,
-          photos, identification_photo_url, dishes,
-          cart_identifier, location_notes,
-          nearby_landmark_en, landmark_latitude, landmark_longitude,
+          cuisine_types, price_range, is_halal, michelin_stars, michelin_bib,
+          lat, lng, google_maps_url, wongnai_url, facebook_url, phone,
+          opening_hours, cover_photo_url, photos, notes, dishes,
           legacy_note, source_quote_th, source_url, wongnai_rating,
-          created_at
+          is_area_only, created_at
         `)
-        .order('wongnai_rating', { ascending: false, nullsFirst: false })
-      );
-
-      // No GPS — attach null _distanceMetres for consistency (used by MISSING-02)
-      if (data) {
-        data = data.map(r => ({ ...r, _distanceMetres: null }));
-      }
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      rows = data || [];
     }
 
-    if (error) throw error;
+    // Attach distance from GPS if available (RPC rows already have it)
+    if (state.locationStatus === 'granted' && state.userLat && state.userLng) {
+      rows = rows.map(r => ({
+        ...r,
+        _distanceMetres: r.distance_m ?? r._distanceMetres ?? null,
+      }));
+    } else {
+      rows = rows.map(r => ({ ...r, _distanceMetres: null }));
+    }
 
-    state.restaurants = data || [];
-    state.isLoading   = false;
-
-    await setCached(CACHE_KEY, state.restaurants);
+    state.restaurants = rows;
+    await writeToIDB(rows);
     applyFiltersAndSearch();
 
-    // Render map pins if map is currently visible
-    if (state.activeView === 'map' && state.map) {
-      state.map.invalidateSize();
-      renderPins(state.filtered);
-    }
-
   } catch (err) {
-    console.error('[fetch] refreshFromNetwork failed:', err);
+    console.error('[refreshFromNetwork]', err);
+    showToast('Could not refresh restaurants', 'error');
+  } finally {
     state.isLoading = false;
-
-    if (state.restaurants.length === 0) {
-      showToast('Could not load restaurants. Check your connection.', 'error');
-      if (dom.emptyState) {
-        dom.emptyState.removeAttribute('hidden');
-        dom.emptyState.style.display = 'flex';
-      }
-      if (dom.cardList) dom.cardList.style.display = 'none';
-    } else {
-      showToast('Using saved data — could not refresh.', 'error');
-      applyFiltersAndSearch();
-    }
   }
 }
 
-function renderLoadingState() {
-  if (dom.skeletonList) {
-    dom.skeletonList.removeAttribute('hidden');
-    dom.skeletonList.style.display = 'flex';
+async function loadPersonalData() {
+  try {
+    const id = await getOrCreatePersonalId();
+    if (!id) return;
+    state.personalId = id;
+    const { data, error } = await db
+      .from('personal_lists')
+      .select('restaurant_id, status, visited_at, notes')
+      .eq('user_id', id);
+    if (error) throw error;
+    state.personalData = new Map((data || []).map(r => [r.restaurant_id, r]));
+  } catch (err) {
+    console.error('[loadPersonalData]', err);
   }
-  if (dom.cardList)   dom.cardList.style.display   = 'none';
-  if (dom.emptyState) dom.emptyState.style.display = 'none';
 }
 
-/* ── Personal data ─────────────────────────────────────────── */
-
-function getOrCreatePersonalId() {
-  let id = localStorage.getItem('personal_id');
+async function getOrCreatePersonalId() {
+  const KEY = 'thailand-food-uid';
+  let id = localStorage.getItem(KEY);
   if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem('personal_id', id);
+    id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+    localStorage.setItem(KEY, id);
   }
   return id;
 }
 
-async function loadPersonalData() {
-  if (!state.personalId) return;
-  try {
-    const { data } = await db
-      .from('personal_data')
-      .select('restaurant_id, is_wishlisted, is_visited, my_rating, notes')
-      .eq('device_id', state.personalId);
+async function savePersonalStatus(restaurantId, status) {
+  if (!state.personalId) await loadPersonalData();
+  const existing = state.personalData.get(restaurantId);
 
-    if (data) {
-      state.personalData.clear();
-      data.forEach(row => state.personalData.set(row.restaurant_id, row));
-    }
-  } catch (err) {
-    console.warn('[personal] loadPersonalData failed:', err);
+  let newStatus;
+  if (status === 'wishlist') {
+    newStatus = existing?.status === 'wishlist' ? null : 'wishlist';
+  } else if (status === 'visited') {
+    newStatus = existing?.status === 'visited' ? null : 'visited';
   }
-}
 
-async function upsertPersonalData(restaurantId, updates) {
-  if (!state.personalId) return;
-  const current = state.personalData.get(restaurantId) || {};
-  const next    = { ...current, ...updates };
-  state.personalData.set(restaurantId, next);
-
-  try {
-    await db.from('personal_data').upsert(
-      { restaurant_id: restaurantId, device_id: state.personalId, ...updates },
-      { onConflict: 'restaurant_id,device_id' }
-    );
-  } catch (err) {
-    console.warn('[personal] upsert failed:', err);
-    showToast('Could not save — please try again.', 'error');
+  if (newStatus === null) {
+    // Remove
+    state.personalData.delete(restaurantId);
+    if (state.personalId) {
+      await db.from('personal_lists')
+        .delete()
+        .eq('user_id', state.personalId)
+        .eq('restaurant_id', restaurantId);
+    }
+  } else {
+    const record = {
+      user_id:       state.personalId,
+      restaurant_id: restaurantId,
+      status:        newStatus,
+      visited_at:    newStatus === 'visited' ? new Date().toISOString() : null,
+    };
+    state.personalData.set(restaurantId, record);
+    if (state.personalId) {
+      await db.from('personal_lists').upsert(record, { onConflict: 'user_id,restaurant_id' });
+    }
   }
 }
 
 /* ============================================================
-   OPEN NOW
+   GEOLOCATION
    ============================================================ */
 
-const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-01
+// Single geolocation request on app load — result stored in state.
+// GPS is required for: _distanceMetres, 'nearest' sort, Near me filter.
+// Failure/denial sets state.locationStatus = 'denied' | 'unavailable'.
 
-/* ── Meal period checker ─────────────────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-08
-// Checks if a restaurant is open during a specific meal period (Asia/Bangkok)
-// Period ranges in minutes from midnight:
-//   breakfast:  00:00–10:30 (0–630)
-//   lunch:      11:00–15:00 (660–900)
-//   dinner:     17:00–22:00 (1020–1320)
-//   late_night: 22:00–27:00 (1320–1620, spans midnight)
-// opening_hours format: { mon: [{open:'11:00',close:'15:00'}], ... } — same as isOpenNow
-
-function isOpenDuringPeriod(period, opening_hours) {
-  if (!opening_hours || !period) return false;
-
-  const periodRanges = {
-    breakfast:  [0,    630],
-    lunch:      [660,  900],
-    dinner:     [1020, 1320],
-    late_night: [1320, 1620],
-  };
-
-  const range = periodRanges[period];
-  if (!range) return false;
-  const [pStart, pEnd] = range;
-
-  // Get today's day key in Bangkok time
-  const now = new Date();
-  const dayKey = new Intl.DateTimeFormat('en-US', {
-    weekday: 'short',
-    timeZone: 'Asia/Bangkok',
-  }).format(now).toLowerCase().slice(0, 3);
-
-  const daySlots = opening_hours[dayKey];
-  if (!daySlots || !Array.isArray(daySlots) || daySlots.length === 0) return false;
-
-  // Check if ANY slot overlaps with the period window
-  for (const slot of daySlots) {
-    const [openH,  openM]  = (slot.open  || '').split(':').map(Number);
-    const [closeH, closeM] = (slot.close || '').split(':').map(Number);
-    if (isNaN(openH) || isNaN(closeH)) continue;
-    const openMin  = openH  * 60 + openM;
-    let   closeMin = closeH * 60 + closeM;
-    if (closeMin < openMin) closeMin += 24 * 60; // spans midnight
-    // Overlap test: open before period ends AND close after period starts
-    if (openMin < pEnd && closeMin > pStart) return true;
-  }
-
-  return false;
-}
-
-function isOpenNow(openingHours) {
-  if (!openingHours || typeof openingHours !== 'object') return 'unknown';
-
-  const now       = new Date();
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: CONFIG.timezone,
-    weekday:  'short',
-    hour:     '2-digit',
-    minute:   '2-digit',
-    hour12:   false,
-  });
-
-  const parts    = formatter.formatToParts(now);
-  const get      = (type) => parts.find(p => p.type === type)?.value;
-  const dayKey   = get('weekday')?.toLowerCase().slice(0, 3);
-  const hourStr  = get('hour');
-  const minStr   = get('minute');
-
-  if (!dayKey || !hourStr || !minStr) return 'unknown';
-
-  const currentMins = parseInt(hourStr, 10) * 60 + parseInt(minStr, 10);
-
-  if (!(dayKey in openingHours)) return 'unknown';
-
-  const daySlots = openingHours[dayKey];
-  if (daySlots === null) return 'closed';
-  if (!Array.isArray(daySlots) || daySlots.length === 0) return 'unknown';
-
-  for (const slot of daySlots) {
-    const [openH,  openM]  = (slot.open  || '').split(':').map(Number);
-    const [closeH, closeM] = (slot.close || '').split(':').map(Number);
-    if (isNaN(openH) || isNaN(closeH)) continue;
-    const openMins  = openH  * 60 + openM;
-    const closeMins = closeH * 60 + closeM;
-    const isOpen = closeMins < openMins
-      ? (currentMins >= openMins || currentMins < closeMins)
-      : (currentMins >= openMins && currentMins < closeMins);
-    if (isOpen) return 'open';
-  }
-
-  return 'closed';
-}
-
-/* ── Distance formatter ─────────────────────────────────────
-   Spec: docs/design/MISSING_FEATURES.md — MISSING-02
-   Returns a human-readable distance string based on metres and
-   location_precision tier. Walking speed: 80 m/min.
-   Precision values (per SCHEMA_GUIDE): 'exact', 'approximate', 'area_only'
-   ────────────────────────────────────────────────────────── */
-function formatDistance(metres, precision) {
-  // No location data — don't show a distance
-  if (!precision || precision === 'no_location') return 'Find locally';
-
-  // Area-only: caller renders area name instead of distance
-  if (precision === 'area_only') return null;
-
-  // No distance available (GPS denied or geom null)
-  if (metres === null || metres === undefined) {
-    if (precision === 'approximate') return 'Location approximate';
-    return '';
-  }
-
-  const prefix = precision === 'approximate' ? '~' : '';
-
-  if (metres < 1000) {
-    // Under 1km: show metres
-    const m = Math.round(metres);
-    return `${prefix}${m} m`;
-  } else {
-    // 1km and over: show km + walking time
-    const km = (metres / 1000).toFixed(1);
-    const mins = Math.max(1, Math.round(metres / 80));
-    return `${prefix}${km} km · ${mins} min walk`;
-  }
-}
-
-/* ============================================================
-   NAVIGATION URLS
-   ============================================================ */
-
-/* ── Navigation destination resolver ────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-03
-// Priority: exact/approximate coords → landmark coords → null
-// Returns { lat, lng, isApproximate, label } or null if no navigable destination
-
-function resolveNavDestination(restaurant) {
-  const p = restaurant.location_precision;
-
-  if ((p === 'exact' || p === 'approximate') && restaurant.lat && restaurant.lng) {
-    return {
-      lat: restaurant.lat,
-      lng: restaurant.lng,
-      isApproximate: p === 'approximate',
-      label: p === 'approximate' ? 'Location approximate' : null
-    };
-  }
-
-  if (restaurant.landmark_latitude && restaurant.landmark_longitude) {
-    return {
-      lat: restaurant.landmark_latitude,
-      lng: restaurant.landmark_longitude,
-      isApproximate: true,
-      label: 'Navigate to nearby landmark'
-    };
-  }
-
-  return null; // no navigable destination
-}
-
-/* ── Location block HTML builder ─────────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-03
-// Renders cart-finder-box, landmark note, area/city, and directions button
-
-function locationBlockHTML(restaurant) {
-  const p    = restaurant.location_precision;
-  const dest = resolveNavDestination(restaurant);
-  let html   = '';
-
-  // Cart / no-location: show finder box prominently
-  if (!p || p === 'no_location' || p === 'area_only') {
-    if (restaurant.cart_identifier || restaurant.location_notes) {
-      html += `<div class="cart-finder-box">
-        <div class="cart-finder-box__label">How to find it</div>
-        ${restaurant.cart_identifier ? `<div class="cart-finder-box__text">${escapeHTML(restaurant.cart_identifier)}</div>` : ''}
-        ${restaurant.location_notes ? `<div class="cart-finder-box__text">${escapeHTML(restaurant.location_notes)}</div>` : ''}
-      </div>`;
-    }
-  }
-
-  // Nearby landmark note
-  if (restaurant.nearby_landmark_en) {
-    html += `<p class="landmark-note">Near: ${escapeHTML(restaurant.nearby_landmark_en)}</p>`;
-  }
-
-  // Area + city
-  const areaCity = [
-    restaurant.area ? restaurant.area.replace(/_/g, ' ') : null,
-    restaurant.city ? restaurant.city.replace(/_/g, ' ') : null
-  ].filter(Boolean).join(', ');
-  if (areaCity) html += `<p class="detail__area">${escapeHTML(areaCity)}</p>`;
-
-  // Directions button — precision-aware
-  if (dest) {
-    const navUrl = `https://maps.google.com/maps?q=${encodeURIComponent(dest.lat)},${encodeURIComponent(dest.lng)}(${encodeURIComponent(restaurant.name_en || restaurant.name_th || 'Restaurant')})`;
-    const approxBadge = dest.isApproximate && dest.label
-      ? `<span class="precision-badge">${escapeHTML(dest.label)}</span>`
-      : '';
-    html += `<div class="detail__directions-area">
-      ${approxBadge}
-      <button class="maps-btn" data-action="directions" data-restaurant-id="${restaurant.id}" aria-label="Get directions to ${escapeHTML(restaurant.name_en || restaurant.name_th || 'restaurant')}">Get Directions</button>
-    </div>`;
-  } else {
-    html += `<div class="detail__directions-area">
-      <button class="maps-btn maps-btn--disabled" data-action="directions" data-restaurant-id="${restaurant.id}" aria-label="Search for ${escapeHTML(restaurant.name_en || restaurant.name_th || 'restaurant')} on Maps">Find on Maps</button>
-    </div>`;
-  }
-
-  return html;
-}
-
-function mapsUrl(restaurant) {
-  if (restaurant.lat && restaurant.lng) {
-    const lat  = encodeURIComponent(restaurant.lat);
-    const lng  = encodeURIComponent(restaurant.lng);
-    const name = encodeURIComponent(restaurant.name_en || restaurant.name_th || 'Restaurant');
-    return `https://maps.google.com/maps?q=${lat},${lng}(${name})`;
-  }
-  const query = encodeURIComponent(
-    [restaurant.name_en, restaurant.city, 'Thailand'].filter(Boolean).join(' ')
-  );
-  return `https://maps.google.com/maps?q=${query}`;
-}
-
-/* ── Navigation URL builder ─────────────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-04, MISSING-17
-// ARCHITECTURE.md Section 3.1 — URL formats
-// Returns: { apple, google, streetView } — all HTTPS except Apple Maps maps:// scheme
-// Apple Maps: maps:// scheme in <a href> — Safari hands off to Maps app natively
-// Google Maps: HTTPS Universal Link — works whether or not Google Maps is installed
-// Street View: HTTPS — only for exact precision coordinates
-// NEVER call window.open() — use <a href> anchors only
-
-function navUrls(restaurant) {
-  const dest = resolveNavDestination(restaurant);
-  let apple = null, google = null, streetView = null;
-
-  if (dest && dest.lat && dest.lng) {
-    const lat = dest.lat;
-    const lng = dest.lng;
-    apple  = `maps://maps.apple.com/?daddr=${lat},${lng}&dirflg=w`;
-    google = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=walking`;
-    if (restaurant.location_precision === 'exact') {
-      streetView = `https://maps.google.com/?layer=c&cbll=${lat},${lng}`;
-    }
-  } else {
-    const name = encodeURIComponent(restaurant.name_th || restaurant.name_en || '');
-    apple  = `maps://maps.apple.com/?q=${name}`;
-    google = `https://www.google.com/maps/search/?api=1&query=${name}`;
-  }
-
-  return { apple, google, streetView };
-}
-
-/* ── Navigation choice sheet ────────────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-04, MISSING-17
-// Shows bottom sheet with Apple Maps + Google Maps + optional Street View
-
-function showNavChoiceSheet(restaurant) {
-  const urls = navUrls(restaurant);
-  const dest = resolveNavDestination(restaurant);
-  const approxLabel = dest?.isApproximate
-    ? `<p class="nav-choice-sheet__title">${escapeHTML(dest.label || 'Location approximate')}</p>` : '';
-
-  const sheetContent = `
-    ${approxLabel}
-    <p class="nav-choice-sheet__title">Open with</p>
-    <a href="${urls.apple}" class="nav-choice-btn">
-      <span>🗺</span> Apple Maps
-    </a>
-    <a href="${urls.google}" class="nav-choice-btn" target="_blank" rel="noopener">
-      <span>📍</span> Google Maps
-    </a>
-    ${urls.streetView ? `<a href="${urls.streetView}" class="street-view-link" target="_blank" rel="noopener">📷 Street View</a>` : ''}
-    <button class="nav-choice-cancel" id="nav-choice-cancel">Cancel</button>
-  `;
-
-  const overlay = dom.navChoiceOverlay || document.getElementById('nav-choice-overlay');
-  const sheet   = dom.navChoiceSheet   || document.getElementById('nav-choice-sheet');
-  if (!overlay || !sheet) {
-    // Fallback if overlay not present
-    window.location.href = urls.apple;
+function requestLocation() {
+  if (!navigator.geolocation) {
+    state.locationStatus = 'unavailable';
+    renderLocationNotice();
     return;
   }
 
-  sheet.innerHTML = sheetContent;
-  overlay.classList.add('nav-choice-overlay--visible');
-
-  function dismiss(e) {
-    if (e.target === overlay) {
-      overlay.classList.remove('nav-choice-overlay--visible');
-      overlay.removeEventListener('click', dismiss);
-    }
-  }
-  overlay.addEventListener('click', dismiss);
-
-  const cancelBtn = document.getElementById('nav-choice-cancel');
-  if (cancelBtn) {
-    cancelBtn.addEventListener('click', () => {
-      overlay.classList.remove('nav-choice-overlay--visible');
-    }, { once: true });
-  }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      state.userLat       = pos.coords.latitude;
+      state.userLng       = pos.coords.longitude;
+      state.locationStatus = 'granted';
+      state.sortOrder     = 'nearest';   // Upgrade default sort now GPS is available
+      renderLocationNotice();
+      refreshFromNetwork();              // Re-fetch with GPS path (distance data)
+    },
+    (err) => {
+      state.locationStatus = err.code === 1 ? 'denied' : 'unavailable';
+      renderLocationNotice();
+      buildFilterChips();                // Re-render chips to reflect disabled Near me
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+  );
 }
 
 /* ============================================================
-   KEYBOARD HANDLER
+   SERVICE WORKER REGISTRATION
    ============================================================ */
 
-function initKeyboardHandler() {
-  if (!window.visualViewport) return;
+// Service worker registers itself in index.html after Leaflet/Supabase load.
+// This file only provides the update-check helper used after SW activation.
 
-  let keyboardOpen = false;
-
-  window.visualViewport.addEventListener('resize', () => {
-    const viewportHeight = window.visualViewport.height;
-    const windowHeight   = window.innerHeight;
-    const keyboardHeight = windowHeight - viewportHeight;
-
-    if (keyboardHeight > 150) {
-      if (!keyboardOpen) {
-        keyboardOpen = true;
-        document.documentElement.style.setProperty('--keyboard-height', `${keyboardHeight}px`);
-        document.body.classList.add('keyboard-open');
-      }
-    } else {
-      if (keyboardOpen) {
-        keyboardOpen = false;
-        document.documentElement.style.setProperty('--keyboard-height', '0px');
-        document.body.classList.remove('keyboard-open');
-      }
-    }
-  });
-
-  window.visualViewport.addEventListener('scroll', () => {
-    if (window.visualViewport.offsetTop > 0) {
-      window.scrollTo(0, window.visualViewport.offsetTop);
-    }
+function checkForUpdate() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.getRegistration().then(reg => {
+    if (reg) reg.update();
   });
 }
 
 /* ============================================================
-   CARD HTML
+   OPENING HOURS HELPERS
    ============================================================ */
 
-/* ── Dishes preview (card) ──────────────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-06
-// Compact one-line preview: "Must order: ข้าวมันไก่ · ไก่ทอด"
-// Signature dishes shown first. Max 2 dish names. Omitted if no dishes.
-
-function dishesPreviewHTML(dishes) {
-  if (!dishes || !Array.isArray(dishes) || dishes.length === 0) return '';
-  const sorted = [...dishes].sort((a, b) => (b.is_signature ? 1 : 0) - (a.is_signature ? 1 : 0));
-  const shown = sorted.slice(0, 2).map(d => d.name_th || d.name_en || '').filter(Boolean);
-  if (shown.length === 0) return '';
-  return `<div class="card__dishes-preview">
-    <span class="card__dishes-label">Must order:</span> ${escapeHTML(shown.join(' · '))}
-  </div>`;
-}
-
-/* ── Dishes detail (full) ────────────────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-06
-// Full list of dishes with name_th, name_en, price_approx, notes, is_signature badge.
-// Section heading: "Known for". Omitted entirely if no dishes.
-
-function dishesDetailHTML(dishes) {
-  if (!dishes || !Array.isArray(dishes) || dishes.length === 0) return '';
-  const items = dishes.map(d => `
-    <div class="dish-item ${d.is_signature ? 'dish-item--signature' : ''}">
-      ${d.name_th ? `<span class="dish-item__name-th">${escapeHTML(d.name_th)}</span>` : ''}
-      ${d.name_en ? `<span class="dish-item__name-en">${escapeHTML(d.name_en)}</span>` : ''}
-      ${d.price_approx ? `<span class="dish-item__price">฿${escapeHTML(String(d.price_approx))}</span>` : ''}
-      ${d.notes ? `<p class="dish-item__notes">${escapeHTML(d.notes)}</p>` : ''}
-      ${d.is_signature ? `<span class="dish-item__badge">Signature</span>` : ''}
-    </div>
-  `).join('');
-  return `<section class="dishes-section">
-    <h3 class="dishes-section__heading">Known for</h3>
-    ${items}
-  </section>`;
-}
-
-/* ── Star rating HTML builder ────────────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-09
-// interactive=false: read-only display on cards — returns '' if no rating
-// interactive=true: 5 tappable buttons on detail view — always shown
-// Tapping same star as current rating clears to null
-
-function starRatingHTML(rating, restaurantId, interactive = false) {
-  if (!interactive && (!rating || rating === 0)) return '';
-
-  const stars = [1, 2, 3, 4, 5].map(n => {
-    const filled = rating && n <= rating;
-    if (interactive) {
-      return `<button class="star-btn${filled ? ' star-btn--filled' : ''}" data-rating="${n}" data-restaurant-id="${restaurantId}" aria-label="${n} star${n > 1 ? 's' : ''}" aria-pressed="${filled ? 'true' : 'false'}">★</button>`;
-    }
-    return `<span class="star${filled ? ' star--filled' : ''}">★</span>`;
-  }).join('');
-
-  return `<div class="star-rating${interactive ? ' star-rating--interactive' : ''}" role="${interactive ? 'group' : 'img'}" aria-label="Rating: ${rating || 0} out of 5">${stars}</div>`;
-}
-
-/* ── Personal notes HTML ─────────────────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-10
-// Textarea pre-filled with existing notes. Auto-saves with 1000ms debounce.
-// "Saved" indicator shows for 1.5s after successful write.
-// Offline: toast shown, save skipped.
-
-function personalNotesHTML(notes, restaurantId) {
-  const safe = notes ? notes.replace(/</g, '&lt;') : '';
-  return `<div class="personal-notes">
-    <label class="personal-notes__label" for="personal-notes-${restaurantId}">Your notes</label>
-    <textarea class="personal-notes__input" id="personal-notes-${restaurantId}" data-restaurant-id="${restaurantId}" placeholder="Add your own notes…" rows="3">${safe}</textarea>
-    <span class="personal-notes__saved" id="personal-notes-saved-${restaurantId}">Saved</span>
-  </div>`;
-}
-
-function attachPersonalNotesListener(restaurantId) {
-  const textarea = document.getElementById(`personal-notes-${restaurantId}`);
-  const savedEl  = document.getElementById(`personal-notes-saved-${restaurantId}`);
-  if (!textarea) return;
-  let notesDebounceTimer;
-  textarea.addEventListener('input', () => {
-    if (!navigator.onLine) { showToast("Can't save while offline", 'error'); return; }
-    clearTimeout(notesDebounceTimer);
-    notesDebounceTimer = setTimeout(async () => {
-      const value = textarea.value.trim();
-      await upsertPersonalData(restaurantId, { notes: value });
-      if (savedEl) {
-        savedEl.classList.add('personal-notes__saved--visible');
-        setTimeout(() => savedEl.classList.remove('personal-notes__saved--visible'), 1500);
-      }
-    }, 1000);
-  });
-}
-
-/* ── Contact row HTML builder ────────────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-12
-// Phone uses tel: URI — no window.open(). Works offline (native iOS call).
-// Website link: HTTPS, target="_blank", rel="noopener noreferrer"
-// Omitted entirely if both phone and website are null.
-// Note: schema has 'phone' and 'website' columns (no wongnai_url column — only wongnai_rating number)
-
-function contactRowHTML(restaurant) {
-  const items = [];
-
-  if (restaurant.phone) {
-    // Format Thai phone number: 0x-xxx-xxxx or 0xx-xxx-xxxx
-    const raw = restaurant.phone.replace(/\s+/g, '');
-    let display = raw;
-    const thaiMatch = raw.replace(/^\+66/, '0').match(/^(0\d{1,2})(\d{3,4})(\d{4})$/);
-    if (thaiMatch) display = `${thaiMatch[1]}-${thaiMatch[2]}-${thaiMatch[3]}`;
-
-    items.push(`<a class="contact-link contact-link--phone" href="tel:${encodeURI(raw)}">📞 ${escapeHTML(display)}</a>`);
-  }
-
-  if (restaurant.website) {
-    items.push(`<a class="contact-link" href="${escapeHTML(restaurant.website)}" target="_blank" rel="noopener noreferrer">Website ↗</a>`);
-  }
-
-  if (items.length === 0) return '';
-
-  return `<div class="contact-row">${items.join('')}</div>`;
-}
-
-/* ── Source attribution HTML builder ────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-15
-// Renders the Thai-language source quote with a link to source_url.
-// Omitted entirely when source_quote_th is null.
-
-function sourceAttributionHTML(restaurant) {
-  if (!restaurant.source_quote_th) return '';
-
-  const link = restaurant.source_url
-    ? `<a href="${escapeHTML(restaurant.source_url)}" target="_blank" rel="noopener noreferrer" class="source-attribution__credit">As described by source ↗</a>`
-    : '';
-
-  return `<div class="source-attribution">
-    <p class="source-attribution__quote">"${escapeHTML(restaurant.source_quote_th)}"</p>
-    ${link}
-  </div>`;
-}
-
-/* ── Photo strip builder ────────────────────────────────── */
 // Spec: docs/design/MISSING_FEATURES.md — MISSING-05
-// Priority: identification_photo_url → cart/sign → exterior → dish/interior
-// Maximum 3 photos shown. Uses scroll-snap for swipe behaviour.
-// openBadgeHTML + overlaysHTML (city badge, wishlist, visited) are absolutely
-// positioned within the strip.
+// opening_hours is a JSONB object: { mon: "08:00-20:00", ... } or null
+// Days: mon tue wed thu fri sat sun — lowercase 3-letter keys
+// Value: "HH:MM-HH:MM" | "closed" | null (unknown)
+// Returns: 'open' | 'closed' | 'unknown'
 
-function photoStripHTML(restaurant, openBadgeHTML, overlaysHTML) {
-  const photos = [];
+function isOpenNow(openingHours) {
+  if (!openingHours) return 'unknown';
 
-  // Step 1: identification photo always first
-  if (restaurant.identification_photo_url) {
-    photos.push({ url: restaurant.identification_photo_url, type: 'identification' });
+  const now  = new Date();
+  const opts = { timeZone: CONFIG.timezone, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false };
+  const parts = new Intl.DateTimeFormat('en-US', opts).formatToParts(now);
+
+  const dayMap = { Sun: 'sun', Mon: 'mon', Tue: 'tue', Wed: 'wed', Thu: 'thu', Fri: 'fri', Sat: 'sat' };
+  const dayKey = dayMap[parts.find(p => p.type === 'weekday')?.value] || null;
+  const hour   = parseInt(parts.find(p => p.type === 'hour')?.value   || '0', 10);
+  const minute = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
+  const nowMin = hour * 60 + minute;
+
+  if (!dayKey) return 'unknown';
+
+  const hours = openingHours[dayKey];
+  if (!hours || hours === 'closed') return 'closed';
+  if (hours === 'open') return 'open'; // 24h
+
+  const match = hours.match(/^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/);
+  if (!match) return 'unknown';
+
+  const openMin  = parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+  const closeMin = parseInt(match[3], 10) * 60 + parseInt(match[4], 10);
+
+  if (closeMin <= openMin) {
+    // Overnight span
+    return (nowMin >= openMin || nowMin < closeMin) ? 'open' : 'closed';
   }
-
-  // Step 2: sort restaurant.photos[] by type priority, de-dup against identification
-  if (Array.isArray(restaurant.photos)) {
-    const typePriority = { cart: 0, sign: 1, exterior: 2, dish: 3, interior: 4 };
-    const sorted = [...restaurant.photos].sort((a, b) =>
-      (typePriority[a.type] ?? 9) - (typePriority[b.type] ?? 9)
-    );
-    sorted.forEach(p => {
-      if (photos.length < 5 && p.url !== restaurant.identification_photo_url) {
-        photos.push(p);
-      }
-    });
-  }
-
-  // No photos: render cuisine placeholder
-  if (photos.length === 0) {
-    const cuisineText = Array.isArray(restaurant.cuisine_types) && restaurant.cuisine_types.length
-      ? restaurant.cuisine_types.slice(0, 2).map(c => c.replace(/_/g, ' ')).join(' · ')
-      : 'Thai cuisine';
-    return `<div class="card__photo-placeholder">
-      <span class="card__cuisine-label">${escapeHTML(cuisineText)}</span>
-      ${openBadgeHTML}
-      ${overlaysHTML}
-    </div>`;
-  }
-
-  // Render strip — max 3 photos
-  const slides = photos.slice(0, 3).map(p =>
-    `<img class="card__photo-slide" src="${escapeHTML(p.url)}" alt="" loading="lazy" decoding="async">`
-  ).join('');
-
-  return `<div class="card__photo-strip">
-    ${slides}
-    ${openBadgeHTML}
-    ${overlaysHTML}
-  </div>`;
+  return (nowMin >= openMin && nowMin < closeMin) ? 'open' : 'closed';
 }
+
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-08
+// Meal period filter: returns true if restaurant is open during given period
+// Periods: breakfast (06:00-11:00), lunch (11:00-15:00), dinner (17:00-22:00), late_night (22:00-02:00)
+function isOpenDuringPeriod(period, openingHours) {
+  if (!openingHours) return false;
+
+  const PERIOD_HOURS = {
+    breakfast:  [6 * 60,  11 * 60],
+    lunch:      [11 * 60, 15 * 60],
+    dinner:     [17 * 60, 22 * 60],
+    late_night: [22 * 60, 26 * 60], // 26*60 = 2:00 AM next day
+  };
+
+  const range = PERIOD_HOURS[period];
+  if (!range) return false;
+
+  const [periodStart, periodEnd] = range;
+
+  const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  return days.some(day => {
+    const hours = openingHours[day];
+    if (!hours || hours === 'closed') return false;
+    if (hours === 'open') return true;
+
+    const match = hours.match(/^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/);
+    if (!match) return false;
+
+    let openMin  = parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+    let closeMin = parseInt(match[3], 10) * 60 + parseInt(match[4], 10);
+    if (closeMin <= openMin) closeMin += 24 * 60; // Overnight
+
+    // Check overlap between restaurant hours and period
+    return openMin < periodEnd && closeMin > periodStart;
+  });
+}
+
+/* ============================================================
+   DISTANCE HELPER
+   ============================================================ */
+
+function haversineMetres(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lng2 - lng1) * Math.PI / 180;
+  const a  = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatDistance(metres) {
+  if (metres == null) return '';
+  if (metres < 1000) return `${Math.round(metres)}m`;
+  return `${(metres / 1000).toFixed(1)}km`;
+}
+
+/* ============================================================
+   CITY LABEL HELPER
+   ============================================================ */
+
+function cityLabel(city) {
+  const MAP = {
+    bangkok:    'Bangkok',
+    chiangmai:  'Chiang Mai',
+    phuket:     'Phuket',
+    pattaya:    'Pattaya',
+    ayutthaya:  'Ayutthaya',
+    chiang_rai: 'Chiang Rai',
+    koh_samui:  'Koh Samui',
+    hua_hin:    'Hua Hin',
+  };
+  return MAP[city] || city;
+}
+
+/* ============================================================
+   ESCAPE HELPER
+   ============================================================ */
 
 function escapeHTML(str) {
-  if (!str) return '';
+  if (str == null) return '';
   return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-function cityBadgeClass(city) {
-  const map = { bangkok: 'badge--bangkok', chiang_mai: 'badge--chiangmai', koh_chang: 'badge--kohchang' };
-  return map[city] || '';
-}
-
-function cityLabel(city) {
-  const map = { bangkok: 'Bangkok', chiang_mai: 'Chiang Mai', koh_chang: 'Koh Chang' };
-  return map[city] || escapeHTML(city);
-}
-
-function cardHTML(r) {
-  const openStatus = isOpenNow(r.opening_hours);
-  const personal   = state.personalData.get(r.id) || {};
-
-  const openClass = openStatus === 'open'   ? 'open-indicator--open'
-                  : openStatus === 'closed' ? 'open-indicator--closed'
-                  :                           'open-indicator--unknown';
-  const openLabel = openStatus === 'open'   ? 'Open now'
-                  : openStatus === 'closed' ? 'Closed'
-                  :                           '';
-
-  const wishHTML = personal.is_wishlisted
-    ? `<button class="wishlist-btn wishlist-btn--active" data-action="wishlist" data-id="${r.id}" aria-label="Remove from wishlist" aria-pressed="true">♥</button>`
-    : `<button class="wishlist-btn" data-action="wishlist" data-id="${r.id}" aria-label="Add to wishlist" aria-pressed="false">♡</button>`;
-
-  const visitedHTML = personal.is_visited
-    ? `<span class="visited-marker visited-marker--visited" aria-label="You've visited">✓ Visited</span>`
-    : '';
-
-  // Build 2: Photo strip (MISSING-05)
-  // City abbreviation badge overlaid on photo strip
-  const cityAbbrev = { bangkok: 'BKK', chiang_mai: 'CNX', koh_chang: 'KCH' };
-  const cityCode = r.city ? (cityAbbrev[r.city] || cityLabel(r.city)) : '';
-  const cityBadgeInStrip = cityCode ? `<span class="badge badge--city">${escapeHTML(cityCode)}</span>` : '';
-
-  const openBadgeHTML = openLabel
-    ? `<span class="open-indicator ${openClass}" aria-label="${openLabel}">${openLabel}</span>`
-    : '';
-  const overlaysHTML = `${cityBadgeInStrip}${wishHTML}${visitedHTML}`;
-  const photoAreaHTML = photoStripHTML(r, openBadgeHTML, overlaysHTML);
-
-  const cuisineTag = Array.isArray(r.cuisine_types) && r.cuisine_types.length
-    ? `<span class="badge badge--cuisine">${escapeHTML(r.cuisine_types[0].replace(/_/g, ' '))}</span>` : '';
-  const priceTag = r.price_range
-    ? `<span class="badge badge--price" aria-label="Price range ${r.price_range}">${'฿'.repeat(r.price_range)}</span>` : '';
-  const michelinTag = r.michelin_stars > 0
-    ? `<span class="badge badge--michelin">${'★'.repeat(r.michelin_stars)}</span>`
-    : r.michelin_bib ? `<span class="badge badge--michelin">Bib</span>` : '';
-  const halalTag = r.is_halal ? `<span class="badge badge--halal">Halal</span>` : '';
-  const cityTag  = r.city ? `<span class="badge ${cityBadgeClass(r.city)}">${cityLabel(r.city)}</span>` : '';
-
-  // Build 2: Distance display (MISSING-02)
-  const precision = r.location_precision || 'no_location';
-  let distanceText = '';
-  if (precision === 'area_only') {
-    const areaName = r.area ? r.area.replace(/_/g, ' ') : null;
-    distanceText = areaName ? `<span class="card__distance card__distance--area-only">${escapeHTML(areaName)}</span>` : '';
-  } else if (precision === 'no_location') {
-    distanceText = `<span class="card__distance">Find locally</span>`;
-  } else {
-    const fd = formatDistance(r._distanceMetres, precision);
-    if (fd) {
-      const cls = precision === 'approximate' ? 'card__distance card__distance--approximate' : 'card__distance';
-      distanceText = `<span class="${cls}">${fd}</span>`;
-    }
-  }
-
-  return `
-<article class="card" role="listitem" data-id="${r.id}" aria-label="${escapeHTML(r.name_en || r.name_th)}">
-  ${photoAreaHTML}
-  <div class="card__body">
-    <h2 class="card__name-thai">${escapeHTML(r.name_th || r.name_en)}</h2>
-    ${r.name_en && r.name_th ? `<p class="card__name-english">${escapeHTML(r.name_en)}</p>` : ''}
-    ${r.tagline ? `<p class="card__tagline">${escapeHTML(r.tagline)}</p>` : ''}
-    <div class="card__meta">${cuisineTag}${priceTag}${distanceText}${michelinTag}${halalTag}${cityTag}</div>
-    ${r.area ? `<p class="card__location">${escapeHTML(r.area.replace(/_/g, ' '))}</p>` : ''}
-    ${dishesPreviewHTML(r.dishes)}
-    ${starRatingHTML(state.personalData.get(r.id)?.my_rating, r.id, false)}
-    <div class="card__actions">
-      <button class="directions-btn" data-action="directions" data-restaurant-id="${r.id}" aria-label="Directions to ${escapeHTML(r.name_en || r.name_th)}">Directions</button>
-    </div>
-  </div>
-</article>`;
+    .replace(/'/g, '&#39;');
 }
 
 /* ============================================================
-   MAP
+   TOAST NOTIFICATIONS
    ============================================================ */
 
-const MAP_TILE_URL  = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const MAP_TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-10
+// Types: 'success' | 'error' | 'info'
+// Auto-dismisses after 3s. Max 3 visible at once.
 
-function initMap() {
-  if (state.map) return;
-  if (typeof L === 'undefined') {
-    console.error('[map] Leaflet not loaded — cannot initialise map');
-    return;
-  }
-  state.map = L.map(dom.mapContainer, {
-    center: [CONFIG.mapDefaultLat, CONFIG.mapDefaultLng],
-    zoom:   CONFIG.mapDefaultZoom,
-    zoomControl: true,
-    attributionControl: true,
-  });
-  L.tileLayer(MAP_TILE_URL, { attribution: MAP_TILE_ATTR, maxZoom: 19 }).addTo(state.map);
-  setTimeout(() => state.map.invalidateSize(), 50);
-}
+function showToast(message, type = 'info') {
+  const container = dom.toastContainer;
+  if (!container) return;
 
-function renderPins(restaurants) {
-  if (!state.map) return;
-  state.mapPins.forEach(marker => marker.remove());
-  state.mapPins.clear();
+  const existing = container.querySelectorAll('.toast');
+  if (existing.length >= 3) existing[0].remove();
 
-  restaurants.forEach(r => {
-    if (!r.lat || !r.lng) return;
-    const openStatus = isOpenNow(r.opening_hours);
-    const personal   = state.personalData.get(r.id) || {};
-    const classes    = ['map-pin'];
-    if (openStatus === 'open')        classes.push('map-pin--open');
-    else if (openStatus === 'closed') classes.push('map-pin--closed');
-    if (personal.is_visited)          classes.push('map-pin--visited');
-    if (personal.is_wishlisted)       classes.push('map-pin--wishlisted');
-    if (r.id === state.selectedId)    classes.push('map-pin--selected');
+  const toast = document.createElement('div');
+  toast.className = `toast toast--${type}`;
+  toast.textContent = message;
+  toast.setAttribute('role', 'alert');
+  container.appendChild(toast);
 
-    // Use tagline as pin label (tells you what the place IS), fall back to English name
-    const fullName  = r.name_en || r.name_th || '';
-    const rawLabel  = r.tagline || fullName;
-    const pinLabel  = rawLabel.length > 22 ? rawLabel.slice(0, 21) + '…' : rawLabel;
+  // Trigger reflow for animation
+  toast.getBoundingClientRect();
+  toast.classList.add('toast--visible');
 
-    // Status indicator: dot + label for open/closed, nothing for unknown
-    const statusHTML = openStatus === 'open'
-      ? `<span class="map-pin__dot"></span><span class="map-pin__status">Open</span>`
-      : openStatus === 'closed'
-        ? `<span class="map-pin__dot"></span><span class="map-pin__status">Closed</span>`
-        : '';
-
-    const icon = L.divIcon({
-      className: '',
-      html: `<div class="${classes.join(' ')}" aria-label="${escapeHTML(fullName)}">${statusHTML}<span class="map-pin__name">${escapeHTML(pinLabel)}</span><div class="map-pin__tail"></div></div>`,
-      iconSize:   [0, 0],
-      iconAnchor: [0, 0],
-    });
-
-    const marker = L.marker([r.lat, r.lng], { icon }).addTo(state.map);
-    marker.on('click', () => openDetail(r.id));
-    state.mapPins.set(r.id, marker);
-  });
-}
-
-function selectMapPin(id) {
-  state.mapPins.forEach((marker, markerId) => {
-    const el = marker.getElement()?.querySelector('.map-pin');
-    if (!el) return;
-    el.classList.toggle('map-pin--selected', markerId === id);
-  });
-  const marker = state.mapPins.get(id);
-  if (marker && state.map) state.map.panTo(marker.getLatLng(), { animate: true });
+  setTimeout(() => {
+    toast.classList.remove('toast--visible');
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
 }
 
 /* ============================================================
-   FILTERS
+   FILTER CHIPS
    ============================================================ */
+
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-03
+// Chips rendered from live restaurant data — only shows cuisines/cities present in dataset
+// Active chip highlighted with filter-chip--active class
+// Chips call applyFiltersAndSearch() on click
 
 function buildFilterChips() {
   const container = dom.filterChips;
   if (!container) return;
   const chips = [];
+
+  // Near me chip (MISSING-16) — disabled when GPS not granted
+  // Spec: docs/design/MISSING_FEATURES.md — MISSING-16
+  const gpsGranted = state.locationStatus === 'granted';
+  const nearMeActive = state.activeFilters.near_me === true;
+  chips.push(`<button class="filter-chip${nearMeActive ? ' filter-chip--active' : ''}${!gpsGranted ? ' filter-chip--disabled' : ''}" data-filter-dim="near_me" data-filter-val="true" aria-pressed="${nearMeActive}" ${!gpsGranted ? 'aria-disabled="true"' : ''} aria-label="Near me — 2km radius">📍 Near me</button>`);
 
   const openNowActive = state.activeFilters.open_now === true;
   chips.push(`<button class="filter-chip${openNowActive ? ' filter-chip--active' : ''}" data-filter-dim="open_now" data-filter-val="true" aria-pressed="${openNowActive}" aria-label="Show open now">Open now</button>`);
@@ -1124,83 +548,50 @@ function buildFilterChips() {
 
 function searchMatches(restaurant, query) {
   if (!query || query.length < 2) return true; // no query = show all
-
-  const lower = query.toLowerCase();
-
-  const dishNames = (restaurant.dishes || [])
-    .flatMap(d => [d.name_th, d.name_en, d.notes])
-    .filter(Boolean);
-
-  const haystack = [
+  const q = query.toLowerCase();
+  const fields = [
     restaurant.name_th,
     restaurant.name_en,
     restaurant.area,
-    restaurant.area_th,
     restaurant.notes,
-    restaurant.cart_identifier,
-    ...dishNames
-  ].filter(Boolean).join(' ').toLowerCase();
-
-  return haystack.includes(lower);
+  ];
+  if (Array.isArray(restaurant.dishes)) {
+    restaurant.dishes.forEach(d => {
+      fields.push(d.name_th, d.name_en, d.description);
+    });
+  }
+  return fields.some(f => f && String(f).toLowerCase().includes(q));
 }
 
-/* ── Filter + search unified ─────────────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-07
-// Called after any filter change, search input change, or data load.
-// Applies: viewMode → filters → search query → sort → renderList
+/* ============================================================
+   APPLY FILTERS AND SEARCH
+   ============================================================ */
 
-/* ── Restaurant sorter ──────────────────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-14
-// 'nearest': _distanceMetres ascending — requires GPS (STEP_B2_05)
-// 'rating': wongnai_rating descending, nulls last
-// 'newest': created_at descending
+/* ── applyFiltersAndSearch ────────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-02/03/07/08/16
+// Applies ALL active filters and search in sequence:
+// 1. viewMode filter (wishlist/visited)
+// 2. City filter
+// 3. Cuisine filter
+// 4. Open now filter
+// 5. Price range filter
+// 6. Halal filter
+// 7. Michelin filter
+// 8. Meal period filter (MISSING-08)
+// 4. Near me filter (from STEP_B2_21) — guarded on GPS
 // Sort is applied AFTER all filters in applyFiltersAndSearch()
-
-function sortRestaurants(restaurants, sortOrder) {
-  const arr = [...restaurants];
-
-  if (sortOrder === 'nearest') {
-    return arr.sort((a, b) => {
-      const aD = a._distanceMetres ?? Infinity;
-      const bD = b._distanceMetres ?? Infinity;
-      return aD - bD;
-    });
-  }
-
-  if (sortOrder === 'rating') {
-    return arr.sort((a, b) => {
-      const aR = a.wongnai_rating ?? -1;
-      const bR = b.wongnai_rating ?? -1;
-      return bR - aR;
-    });
-  }
-
-  if (sortOrder === 'newest') {
-    return arr.sort((a, b) =>
-      new Date(b.created_at) - new Date(a.created_at)
-    );
-  }
-
-  return arr;
-}
 
 function applyFiltersAndSearch() {
   let results = [...state.restaurants];
 
-  // 1. View mode (All / Wishlist / Visited) — B2_16
+  // 1. View mode
   if (state.viewMode === 'wishlist') {
-    results = results.filter(r => {
-      const p = state.personalData.get(r.id);
-      return p && p.is_wishlisted;
-    });
+    results = results.filter(r => state.personalData.get(r.id)?.status === 'wishlist');
   } else if (state.viewMode === 'visited') {
-    results = results.filter(r => {
-      const p = state.personalData.get(r.id);
-      return p && p.is_visited;
-    });
+    results = results.filter(r => state.personalData.get(r.id)?.status === 'visited');
   }
 
-  // 2. Existing filter logic
+  // 2–7. Active filters (city, cuisine, price, open_now, halal, michelin)
   if (state.activeFilters.city)        results = results.filter(r => r.city === state.activeFilters.city);
   if (state.activeFilters.cuisine)     results = results.filter(r => Array.isArray(r.cuisine_types) && r.cuisine_types.includes(state.activeFilters.cuisine));
   if (state.activeFilters.price_range) results = results.filter(r => r.price_range === Number(state.activeFilters.price_range));
@@ -1208,7 +599,7 @@ function applyFiltersAndSearch() {
   if (state.activeFilters.halal)       results = results.filter(r => r.is_halal);
   if (state.activeFilters.michelin)    results = results.filter(r => r.michelin_stars > 0 || r.michelin_bib);
 
-  // 3. Meal period filter (from STEP_B2_13) — guarded until implemented
+  // 8. Meal period filter (MISSING-08)
   if (state.activeFilters.meal_period && typeof isOpenDuringPeriod === 'function') {
     results = results.filter(r => isOpenDuringPeriod(state.activeFilters.meal_period, r.opening_hours));
   }
@@ -1245,253 +636,499 @@ function renderList(restaurants) {
   dom.cardList.removeAttribute('hidden');
   dom.cardList.style.display = 'flex';
   if (!restaurants || restaurants.length === 0) {
-    dom.cardList.innerHTML = '';
+    dom.cardList.style.display = 'none';
+    dom.cardList.setAttribute('hidden', '');
     if (dom.emptyState) {
       dom.emptyState.removeAttribute('hidden');
-      dom.emptyState.style.display = 'flex';
+      dom.emptyState.style.display = '';
     }
     return;
   }
-  if (dom.emptyState) dom.emptyState.style.display = 'none';
-  dom.cardList.innerHTML = restaurants.map(cardHTML).join('');
+  if (dom.emptyState) {
+    dom.emptyState.style.display = 'none';
+    dom.emptyState.setAttribute('hidden', '');
+  }
+
+  dom.cardList.innerHTML = restaurants.map(r => {
+    const personal   = state.personalData.get(r.id);
+    const isWishlist = personal?.status === 'wishlist';
+    const isVisited  = personal?.status === 'visited';
+    const dist       = r._distanceMetres != null ? formatDistance(r._distanceMetres) : '';
+    const openStatus = isOpenNow(r.opening_hours);
+    const openLabel  = openStatus === 'open' ? 'Open' : openStatus === 'closed' ? 'Closed' : '';
+    const openClass  = openStatus === 'open' ? 'card__open-tag--open' : openStatus === 'closed' ? 'card__open-tag--closed' : '';
+
+    return `
+      <div class="card ${isVisited ? 'card--visited' : ''}" role="listitem" data-id="${r.id}" tabindex="0" aria-label="${escapeHTML(r.name_en || r.name_th)}">
+        <div class="card__photo-wrap">
+          ${r.cover_photo_url
+            ? `<img class="card__photo" src="${escapeHTML(r.cover_photo_url)}" alt="${escapeHTML(r.name_en || r.name_th)}" loading="lazy">`
+            : `<div class="card__photo card__photo--placeholder" aria-hidden="true"></div>`}
+          ${openLabel ? `<span class="card__open-tag ${openClass}" aria-label="${openLabel}">${openLabel}</span>` : ''}
+          ${isWishlist ? `<span class="card__wishlist-badge" aria-label="On wishlist">♡</span>` : ''}
+          ${isVisited  ? `<span class="card__visited-badge"  aria-label="Visited">✓</span>`  : ''}
+        </div>
+        <div class="card__body">
+          <p class="card__name">${escapeHTML(r.name_th || r.name_en)}</p>
+          <p class="card__meta">
+            ${r.city ? `<span class="card__city">${cityLabel(r.city)}</span>` : ''}
+            ${r.area ? `<span class="card__area">${escapeHTML(r.area)}</span>` : ''}
+            ${dist   ? `<span class="card__dist">${dist}</span>` : ''}
+          </p>
+          ${r.wongnai_rating ? `<p class="card__rating">★ ${r.wongnai_rating}</p>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+/* ── Location notice ─────────────────────────────────────── */
+function renderLocationNotice() {
+  const el = dom.locationNotice;
+  if (!el) return;
+  if (state.locationStatus === 'denied') {
+    el.textContent = 'Location access denied — enable in Settings for distance and sorting.';
+    el.removeAttribute('hidden');
+  } else if (state.locationStatus === 'unavailable') {
+    el.textContent = 'Location unavailable on this device.';
+    el.removeAttribute('hidden');
+  } else {
+    el.setAttribute('hidden', '');
+    el.textContent = '';
+  }
 }
 
 /* ============================================================
-   ROUTER — hash-based navigation
-   #map (default), #list, #restaurant/{slug}
+   MAP
    ============================================================ */
 
-function initRouter() {
-  window.addEventListener('hashchange', () => handleRoute(window.location.hash));
-  handleRoute(window.location.hash);
+function initMap() {
+  if (!dom.mapContainer) return;
+  if (state.map) return; // Already initialised
+
+  state.map = L.map(dom.mapContainer, {
+    center:    [CONFIG.mapDefaultLat, CONFIG.mapDefaultLng],
+    zoom:      CONFIG.mapDefaultZoom,
+    zoomControl: false,
+  });
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19,
+  }).addTo(state.map);
+
+  // Zoom control — bottom right
+  L.control.zoom({ position: 'bottomright' }).addTo(state.map);
 }
 
-function handleRoute(hash) {
-  if (!hash) hash = '';
+function renderPins(restaurants) {
+  if (!state.map) return;
 
-  if (hash.startsWith('#restaurant/')) {
-    const slug = decodeURIComponent(hash.slice(12));
-    if (state.restaurants.length === 0) {
-      // Data not yet loaded — store pending and handle after fetch
-      state.pendingRoute = hash;
-      return;
-    }
-    const r = state.restaurants.find(r => r.slug === slug) ||
-              state.restaurants.find(r => String(r.id) === slug);
-    if (r) {
-      renderDetailPage(r);
-    } else {
-      window.location.replace('#map');
-    }
-  } else if (hash === '#list') {
-    hideDetailPage();
-    applyView('list');
-  } else {
-    // '#map', '' or anything else
-    hideDetailPage();
-    applyView('map');
-  }
+  // Clear existing pins
+  state.mapPins.forEach(pin => pin.remove());
+  state.mapPins.clear();
+
+  restaurants.forEach(r => {
+    if (!r.lat || !r.lng) return;
+
+    const personal   = state.personalData.get(r.id);
+    const isWishlist = personal?.status === 'wishlist';
+    const isVisited  = personal?.status === 'visited';
+
+    const pinClass = isVisited ? 'map-pin map-pin--visited'
+                  : isWishlist ? 'map-pin map-pin--wishlist'
+                  : 'map-pin';
+
+    const icon = L.divIcon({
+      className: '',
+      html:      `<div class="${pinClass}" aria-label="${escapeHTML(r.name_en || r.name_th)}"></div>`,
+      iconSize:  [28, 28],
+      iconAnchor:[14, 14],
+    });
+
+    const marker = L.marker([r.lat, r.lng], { icon })
+      .addTo(state.map)
+      .on('click', () => openDetail(r.id));
+
+    state.mapPins.set(r.id, marker);
+  });
 }
 
-/* ── View management ──────────────────────────────────────── */
+/* ============================================================
+   DETAIL VIEW
+   ============================================================ */
 
-function applyView(view) {
-  state.activeView = view;
-  const isList = view === 'list';
-
-  dom.viewList.classList.toggle('view--active', isList);
-  dom.viewList.setAttribute('aria-hidden', String(!isList));
-  dom.viewMap.classList.toggle('view--active', !isList);
-  dom.viewMap.setAttribute('aria-hidden', String(isList));
-
-  dom.navList.setAttribute('aria-pressed', String(isList));
-  dom.navList.classList.toggle('nav-item--active', isList);
-  dom.navMap.setAttribute('aria-pressed', String(!isList));
-  dom.navMap.classList.toggle('nav-item--active', !isList);
-
-  if (!isList) {
-    initMap();
-    setTimeout(() => {
-      if (state.map) {
-        state.map.invalidateSize();
-        renderPins(state.filtered);
-      }
-    }, 50);
-  }
-}
-
-/* ── Detail page ──────────────────────────────────────────── */
+// Spec: docs/design/FEATURE_SPECS.md — Feature 5
+// Full-screen routed page at #detail/:slug
+// Shows: cover photo, name, area/city, cuisine, price, rating, opening hours,
+//        dishes, contact, personal action buttons, navigation links
 
 function openDetail(id) {
-  const r = state.restaurants.find(r => r.id === id);
+  const r = state.restaurants.find(r => r.id === id || r.slug === id);
   if (!r) return;
-  const key = r.slug || String(r.id);
-  window.location.hash = '#restaurant/' + encodeURIComponent(key);
+  state.selectedId = r.id;
+  window.location.hash = `#detail/${r.slug || r.id}`;
+}
+
+/* ── Source attribution (MISSING-15) ──────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-15
+// source_quote_th: Thai-language quote from original source
+// source_url: URL to the source page
+// Both rendered at bottom of detail view; both omitted when null
+
+function sourceAttributionHTML(restaurant) {
+  if (!restaurant.source_quote_th) return '';
+  const link = restaurant.source_url
+    ? `<a href="${escapeHTML(restaurant.source_url)}" target="_blank" rel="noopener noreferrer" class="source-attribution__credit">As described by source ↗</a>`
+    : '';
+  return `<div class="source-attribution">
+    <p class="source-attribution__quote">"${escapeHTML(restaurant.source_quote_th)}"</p>
+    ${link}
+  </div>`;
 }
 
 function renderDetailPage(r) {
-  state.selectedId = r.id;
-  if (state.activeView === 'map') selectMapPin(r.id);
+  if (!r) return;
 
-  dom.detailTitle.textContent = r.name_th || r.name_en;
+  document.title = `${r.name_en || r.name_th} — Thailand Food Guide`;
+  if (dom.detailTitle) dom.detailTitle.textContent = r.name_en || r.name_th;
 
-  const personal   = state.personalData.get(r.id) || {};
+  const personal   = state.personalData.get(r.id);
+  const isWishlist = personal?.status === 'wishlist';
+  const isVisited  = personal?.status === 'visited';
   const openStatus = isOpenNow(r.opening_hours);
 
-  // Primary photo
-  const photos       = Array.isArray(r.photos) ? r.photos : [];
-  const primaryPhoto = photos.find(p => p.is_primary) || photos[0];
-  const photosHTML   = primaryPhoto
-    ? `<div class="detail-photo"><img src="${escapeHTML(primaryPhoto.url)}" alt="${escapeHTML(r.name_en || r.name_th)} photo" loading="eager" decoding="async"></div>`
+  const cuisineList = Array.isArray(r.cuisine_types)
+    ? r.cuisine_types.map(c => c.replace(/_/g, ' ')).join(', ')
     : '';
 
-  // Status
-  const openClass = openStatus === 'open'   ? 'open-indicator--open'
-                  : openStatus === 'closed' ? 'open-indicator--closed'
-                  :                           'open-indicator--unknown';
-  const openLabel = openStatus === 'open'   ? 'Open now'
-                  : openStatus === 'closed' ? 'Closed'
-                  :                           'Hours unknown';
+  const priceBaht = r.price_range ? '฿'.repeat(r.price_range) : '';
 
-  // Hours rows
-  const dayNames  = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
-  const hoursRows = r.opening_hours
-    ? Object.entries(dayNames).map(([key, label]) =>
-        `<div class="detail-row"><span class="detail-row__label">${label}</span><span class="detail-row__value">${formatDayHours(r.opening_hours[key])}</span></div>`
-      ).join('')
-    : '<div class="detail-row"><span class="detail-row__value">Hours not available</span></div>';
+  const ratingHTML = r.wongnai_rating
+    ? `<span class="detail-rating">★ ${r.wongnai_rating}</span>`
+    : '';
 
-  const cuisineDisplay = Array.isArray(r.cuisine_types)
-    ? r.cuisine_types.map(c => c.replace(/_/g, ' ')).join(', ') : '';
+  const openHTML = openStatus === 'open'
+    ? '<span class="detail-open detail-open--open">Open now</span>'
+    : openStatus === 'closed'
+    ? '<span class="detail-open detail-open--closed">Closed</span>'
+    : '';
 
-  // Build 2: Distance display in detail view (MISSING-02)
-  const detailPrecision = r.location_precision || 'no_location';
-  let detailDistance = '';
-  if (detailPrecision === 'area_only' && r.area) {
-    detailDistance = `<span class="precision-badge">📍 ${escapeHTML(r.area.replace(/_/g, ' '))}</span>`;
-  } else if (detailPrecision === 'no_location') {
-    detailDistance = `<span class="precision-badge">Find locally</span>`;
-  } else {
-    const fd = formatDistance(r._distanceMetres, detailPrecision);
-    if (fd) {
-      detailDistance = `<span class="precision-badge">${fd}</span>`;
-    }
-  }
+  // Opening hours table
+  const days = ['mon','tue','wed','thu','fri','sat','sun'];
+  const dayLabels = { mon:'Mon', tue:'Tue', wed:'Wed', thu:'Thu', fri:'Fri', sat:'Sat', sun:'Sun' };
+
+  const hoursHTML = r.opening_hours
+    ? `<table class="detail-hours">
+        ${days.map(d => {
+          const val = r.opening_hours[d];
+          return `<tr>
+            <td class="detail-hours__day">${dayLabels[d]}</td>
+            <td class="detail-hours__time">${val === 'closed' ? 'Closed' : val || '—'}</td>
+          </tr>`;
+        }).join('')}
+       </table>`
+    : '';
+
+  // Dishes section
+  const dishesHTML = Array.isArray(r.dishes) && r.dishes.length > 0
+    ? `<div class="detail-dishes">
+        <h3 class="detail-section-title">Must Try</h3>
+        <div class="detail-dishes__list">
+          ${r.dishes.map(d => `
+            <div class="dish-card">
+              ${d.photo_url ? `<img class="dish-card__photo" src="${escapeHTML(d.photo_url)}" alt="${escapeHTML(d.name_en || d.name_th)}" loading="lazy">` : ''}
+              <div class="dish-card__body">
+                <p class="dish-card__name-th">${escapeHTML(d.name_th || '')}</p>
+                ${d.name_en ? `<p class="dish-card__name-en">${escapeHTML(d.name_en)}</p>` : ''}
+                ${d.price   ? `<p class="dish-card__price">฿${d.price}</p>` : ''}
+                ${d.description ? `<p class="dish-card__desc">${escapeHTML(d.description)}</p>` : ''}
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>`
+    : '';
+
+  // Contact row
+  const contactLinks = [];
+  if (r.google_maps_url) contactLinks.push(`<a href="${escapeHTML(r.google_maps_url)}" target="_blank" rel="noopener noreferrer" class="detail-contact__link detail-contact__link--maps" aria-label="Open in Google Maps">Maps</a>`);
+  if (r.wongnai_url)     contactLinks.push(`<a href="${escapeHTML(r.wongnai_url)}" target="_blank" rel="noopener noreferrer" class="detail-contact__link detail-contact__link--wongnai" aria-label="View on Wongnai">Wongnai</a>`);
+  if (r.facebook_url)    contactLinks.push(`<a href="${escapeHTML(r.facebook_url)}" target="_blank" rel="noopener noreferrer" class="detail-contact__link detail-contact__link--facebook" aria-label="View on Facebook">Facebook</a>`);
+  if (r.phone)           contactLinks.push(`<a href="tel:${escapeHTML(r.phone)}" class="detail-contact__link detail-contact__link--phone" aria-label="Call ${escapeHTML(r.phone)}">${escapeHTML(r.phone)}</a>`);
+
+  const contactHTML = contactLinks.length
+    ? `<div class="detail-contact">${contactLinks.join('')}</div>`
+    : '';
+
+  // Personal action buttons
+  const wishlistLabel = isWishlist ? '♡ Remove from Wishlist' : '♡ Add to Wishlist';
+  const visitedLabel  = isVisited  ? '✓ Mark Unvisited'       : '✓ Mark Visited';
 
   dom.detailBody.innerHTML = `
-    <div class="detail-body__inner">
-      ${photosHTML}
+    <div class="detail-cover">
+      ${r.cover_photo_url
+        ? `<img class="detail-cover__img" src="${escapeHTML(r.cover_photo_url)}" alt="${escapeHTML(r.name_en || r.name_th)}">`
+        : `<div class="detail-cover__placeholder" aria-hidden="true"></div>`}
+    </div>
 
-      <div class="detail-meta-row">
-        <span class="open-indicator ${openClass}">${openLabel}</span>
-        ${detailDistance}
-        ${r.name_en && r.name_th ? `<p class="card__name-english">${escapeHTML(r.name_en)}</p>` : ''}
-        ${r.legacy_note ? `<span class="legacy-note">${escapeHTML(r.legacy_note)}</span>` : ''}
+    <div class="detail-meta-row">
+      <p class="detail-name-th">${escapeHTML(r.name_th || '')}</p>
+      ${r.legacy_note ? `<span class="legacy-note">${escapeHTML(r.legacy_note)}</span>` : ''}
+      <p class="detail-location">${[r.area, cityLabel(r.city)].filter(Boolean).join(', ')}</p>
+      <div class="detail-tags">
+        ${cuisineList ? `<span class="detail-tag">${escapeHTML(cuisineList)}</span>` : ''}
+        ${priceBaht   ? `<span class="detail-tag">${priceBaht}</span>` : ''}
+        ${r.is_halal  ? `<span class="detail-tag detail-tag--halal">Halal</span>` : ''}
+        ${r.michelin_stars > 0 ? `<span class="detail-tag detail-tag--michelin">★ Michelin ${'★'.repeat(r.michelin_stars)}</span>` : ''}
+        ${r.michelin_bib && !r.michelin_stars ? `<span class="detail-tag detail-tag--michelin">Bib Gourmand</span>` : ''}
       </div>
+      ${ratingHTML}
+      ${openHTML}
+    </div>
 
-      ${dishesDetailHTML(r.dishes)}
+    ${hoursHTML ? `<div class="detail-hours-wrap">${hoursHTML}</div>` : ''}
 
-      ${locationBlockHTML(r)}
+    ${dishesHTML}
 
-      ${contactRowHTML(r)}
+    ${r.notes ? `<div class="detail-notes"><p>${escapeHTML(r.notes)}</p></div>` : ''}
 
-      <div class="detail-section">
-        ${cuisineDisplay ? `<div class="detail-row"><span class="detail-row__label">Cuisine</span><span class="detail-row__value">${escapeHTML(cuisineDisplay)}</span></div>` : ''}
-        ${r.city ? `<div class="detail-row"><span class="detail-row__label">City</span><span class="detail-row__value">${cityLabel(r.city)}${r.area ? ` — ${escapeHTML(r.area.replace(/_/g, ' '))}` : ''}</span></div>` : ''}
-        ${r.price_range ? `<div class="detail-row"><span class="detail-row__label">Price</span><span class="detail-row__value">${'฿'.repeat(r.price_range)}</span></div>` : ''}
-        ${r.is_halal ? `<div class="detail-row"><span class="detail-row__label">Halal</span><span class="detail-row__value">Yes ✓</span></div>` : ''}
-        ${r.michelin_stars > 0 ? `<div class="detail-row"><span class="detail-row__label">Michelin</span><span class="detail-row__value">${'★'.repeat(r.michelin_stars)} Star${r.michelin_stars > 1 ? 's' : ''}</span></div>` : r.michelin_bib ? `<div class="detail-row"><span class="detail-row__label">Michelin</span><span class="detail-row__value">Bib Gourmand</span></div>` : ''}
-        ${r.description_en ? `<div class="detail-row"><span class="detail-row__label">About</span><span class="detail-row__value">${escapeHTML(r.description_en)}</span></div>` : ''}
+    <div class="detail-personal">
+      <button class="detail-action-btn detail-action-btn--wishlist ${isWishlist ? 'detail-action-btn--active' : ''}"
+        data-action="wishlist" data-id="${r.id}" aria-pressed="${isWishlist}">
+        ${wishlistLabel}
+      </button>
+      <button class="detail-action-btn detail-action-btn--visited ${isVisited ? 'detail-action-btn--active' : ''}"
+        data-action="visited" data-id="${r.id}" aria-pressed="${isVisited}">
+        ${visitedLabel}
+      </button>
+    </div>
+
+    ${sourceAttributionHTML(r)}
+
+    ${contactHTML}
+  `;
+}
+
+/* ============================================================
+   PHOTO GALLERY
+   ============================================================ */
+
+function openPhotoGallery(photos, startIndex = 0) {
+  // Lightbox — fullscreen swipe gallery
+  if (!photos || photos.length === 0) return;
+
+  let current = startIndex;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'gallery-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', 'Photo gallery');
+
+  const render = () => {
+    overlay.innerHTML = `
+      <button class="gallery-close" aria-label="Close gallery">✕</button>
+      <div class="gallery-img-wrap">
+        <img class="gallery-img" src="${escapeHTML(photos[current])}" alt="Photo ${current + 1} of ${photos.length}">
       </div>
+      <div class="gallery-controls">
+        <button class="gallery-prev" aria-label="Previous photo" ${current === 0 ? 'disabled' : ''}>‹</button>
+        <span class="gallery-counter">${current + 1} / ${photos.length}</span>
+        <button class="gallery-next" aria-label="Next photo" ${current === photos.length - 1 ? 'disabled' : ''}>›</button>
+      </div>`;
 
-      <div class="detail-section">
-        <div class="detail-row detail-row--header"><span class="detail-row__label">Opening Hours</span></div>
-        ${hoursRows}
-      </div>
+    overlay.querySelector('.gallery-close').addEventListener('click', () => overlay.remove());
+    overlay.querySelector('.gallery-prev')?.addEventListener('click', () => { if (current > 0) { current--; render(); } });
+    overlay.querySelector('.gallery-next')?.addEventListener('click', () => { if (current < photos.length - 1) { current++; render(); } });
+  };
 
-      <div class="detail-personal">
-        <button class="personal-btn${personal.is_wishlisted ? ' personal-btn--active' : ''}"
-                data-action="wishlist" data-id="${r.id}"
-                aria-pressed="${!!personal.is_wishlisted}"
-                aria-label="${personal.is_wishlisted ? 'Remove from wishlist' : 'Add to wishlist'}">
-          ${personal.is_wishlisted ? '♥ Wishlisted' : '♡ Wishlist'}
-        </button>
-        <button class="personal-btn${personal.is_visited ? ' personal-btn--visited' : ''}"
-                data-action="visited" data-id="${r.id}"
-                aria-pressed="${!!personal.is_visited}"
-                aria-label="${personal.is_visited ? 'Mark as not visited' : 'Mark as visited'}">
-          ${personal.is_visited ? '✓ Visited' : '○ Mark visited'}
-        </button>
-        ${starRatingHTML(personal.my_rating, r.id, true)}
-        ${personalNotesHTML(personal.notes, r.id)}
-      </div>
-
-      ${sourceAttributionHTML(r)}
-    </div>`;
-
-  dom.app.classList.add('app-shell--detail');
-  dom.viewDetail.classList.add('view-detail--active');
-  dom.viewDetail.removeAttribute('aria-hidden');
-  dom.detailBody.scrollTop = 0;
-  attachPersonalNotesListener(r.id);
+  render();
+  document.body.appendChild(overlay);
 }
 
-function hideDetailPage() {
-  if (!dom.viewDetail.classList.contains('view-detail--active')) return;
-  dom.viewDetail.classList.remove('view-detail--active');
-  dom.viewDetail.setAttribute('aria-hidden', 'true');
-  dom.app.classList.remove('app-shell--detail');
-  state.selectedId = null;
+/* ============================================================
+   NAVIGATION CHOICE SHEET (Directions)
+   ============================================================ */
+
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-09
+// Shows a sheet with navigation app options: Apple Maps, Google Maps, Waze
+// Opens the appropriate deep-link URL for the selected app
+
+function showNavChoiceSheet(lat, lng, name) {
+  const encodedName = encodeURIComponent(name);
+
+  const options = [
+    {
+      label:    'Apple Maps',
+      icon:     '🗺️',
+      url:      `maps://?daddr=${lat},${lng}&q=${encodedName}`,
+    },
+    {
+      label:    'Google Maps',
+      icon:     '🌍',
+      url:      `https://maps.google.com/?daddr=${lat},${lng}`,
+    },
+    {
+      label:    'Waze',
+      icon:     '🚗',
+      url:      `waze://?ll=${lat},${lng}&navigate=yes`,
+    },
+  ];
+
+  dom.navChoiceSheet.innerHTML = `
+    <p class="nav-choice-title">Get directions to</p>
+    <p class="nav-choice-name">${escapeHTML(name)}</p>
+    ${options.map(o => `
+      <a href="${o.url}" class="nav-choice-option" target="_blank" rel="noopener noreferrer">
+        <span class="nav-choice-icon">${o.icon}</span>
+        <span class="nav-choice-label">${o.label}</span>
+      </a>`).join('')}
+    <button class="nav-choice-cancel" id="nav-choice-cancel">Cancel</button>
+  `;
+
+  dom.navChoiceOverlay.classList.add('nav-choice-overlay--visible');
+
+  document.getElementById('nav-choice-cancel')?.addEventListener('click', () => {
+    dom.navChoiceOverlay.classList.remove('nav-choice-overlay--visible');
+  });
+
+  dom.navChoiceOverlay.addEventListener('click', (e) => {
+    if (e.target === dom.navChoiceOverlay) {
+      dom.navChoiceOverlay.classList.remove('nav-choice-overlay--visible');
+    }
+  }, { once: true });
 }
 
-/* ── Toast ─────────────────────────────────────────────────── */
+/* ============================================================
+   ROUTING
+   ============================================================ */
 
-function showToast(message, type = 'info') {
-  const toast = document.createElement('div');
-  toast.className   = `toast toast--${type}`;
-  toast.textContent = message;
-  toast.setAttribute('role', 'status');
-  dom.toastContainer.appendChild(toast);
-  requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add('toast--visible')));
-  setTimeout(() => {
-    toast.classList.remove('toast--visible');
-    setTimeout(() => toast.remove(), 400);
-  }, 3500);
+function handleRoute(hash) {
+  hash = hash || window.location.hash;
+
+  if (!hash || hash === '#' || hash === '#map') {
+    switchView('map');
+    return;
+  }
+  if (hash === '#list') {
+    switchView('list');
+    return;
+  }
+  if (hash.startsWith('#detail/')) {
+    const slug = hash.slice('#detail/'.length);
+    const r    = state.restaurants.find(r => r.slug === slug || String(r.id) === slug);
+    if (r) {
+      showDetailView(r);
+    } else if (state.restaurants.length === 0) {
+      // Data not loaded yet — store and resolve after load
+      state.pendingRoute = hash;
+    } else {
+      switchView('map');
+    }
+    return;
+  }
+  switchView('map');
 }
 
-/* ── Hours formatting ────────────────────────────────────── */
+function switchView(view) {
+  state.activeView = view;
 
-function formatHoursSlot(slot) {
-  if (!slot || typeof slot !== 'object') return '';
-  return `${slot.open || '?'}–${slot.close || '?'}`;
+  const viewList   = dom.viewList;
+  const viewMap    = dom.viewMap;
+  const viewDetail = dom.viewDetail;
+
+  viewList.classList.remove('view--active');
+  viewMap.classList.remove('view--active');
+  viewDetail.classList.remove('view--active');
+  viewList.setAttribute('aria-hidden', 'true');
+  viewMap.setAttribute('aria-hidden', 'true');
+  viewDetail.setAttribute('aria-hidden', 'true');
+
+  dom.navList.setAttribute('aria-pressed', 'false');
+  dom.navList.classList.remove('nav-item--active');
+  dom.navMap.setAttribute('aria-pressed', 'false');
+  dom.navMap.classList.remove('nav-item--active');
+
+  if (view === 'list') {
+    viewList.classList.add('view--active');
+    viewList.removeAttribute('aria-hidden');
+    dom.navList.setAttribute('aria-pressed', 'true');
+    dom.navList.classList.add('nav-item--active');
+    applyFiltersAndSearch();
+  } else if (view === 'map') {
+    viewMap.classList.add('view--active');
+    viewMap.removeAttribute('aria-hidden');
+    dom.navMap.setAttribute('aria-pressed', 'true');
+    dom.navMap.classList.add('nav-item--active');
+    if (state.map) {
+      setTimeout(() => state.map.invalidateSize(), 50);
+    }
+    renderPins(state.filtered.length > 0 ? state.filtered : state.restaurants);
+  }
 }
 
-function formatDayHours(daySlots) {
-  if (daySlots === null) return 'Closed';
-  if (!Array.isArray(daySlots) || daySlots.length === 0) return '—';
-  return daySlots.map(formatHoursSlot).join(', ');
+function showDetailView(r) {
+  const viewList   = dom.viewList;
+  const viewMap    = dom.viewMap;
+  const viewDetail = dom.viewDetail;
+
+  viewList.classList.remove('view--active');
+  viewMap.classList.remove('view--active');
+  viewList.setAttribute('aria-hidden', 'true');
+  viewMap.setAttribute('aria-hidden', 'true');
+
+  viewDetail.classList.add('view--active');
+  viewDetail.removeAttribute('aria-hidden');
+
+  renderDetailPage(r);
 }
 
-/* ── Event listeners ─────────────────────────────────────── */
+/* ============================================================
+   RESTAURANT SORTER
+   ============================================================ */
+
+/* ── Restaurant sorter ──────────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-14
+// 'nearest': _distanceMetres ascending — requires GPS (STEP_B2_05)
+// 'rating': wongnai_rating descending, nulls last
+// 'newest': created_at descending
+// Sort is applied AFTER all filters in applyFiltersAndSearch()
+
+function sortRestaurants(restaurants, sortOrder) {
+  const arr = [...restaurants];
+
+  if (sortOrder === 'nearest') {
+    return arr.sort((a, b) => {
+      const aD = a._distanceMetres ?? Infinity;
+      const bD = b._distanceMetres ?? Infinity;
+      return aD - bD;
+    });
+  }
+
+  if (sortOrder === 'rating') {
+    return arr.sort((a, b) => {
+      const aR = a.wongnai_rating ?? -1;
+      const bR = b.wongnai_rating ?? -1;
+      return bR - aR;
+    });
+  }
+
+  if (sortOrder === 'newest') {
+    return arr.sort((a, b) =>
+      new Date(b.created_at) - new Date(a.created_at)
+    );
+  }
+
+  return arr;
+}
+
+/* ============================================================
+   EVENT LISTENERS
+   ============================================================ */
 
 function attachEventListeners() {
-  // Card tap → navigate to detail page
+
+  // Card list tap — open detail
   dom.cardList.addEventListener('click', (e) => {
-    // Directions button — open nav choice sheet (B2_10)
-    const dirBtn = e.target.closest('[data-action="directions"]');
-    if (dirBtn) {
-      e.stopPropagation();
-      const restId = dirBtn.dataset.restaurantId;
-      const restaurant = state.restaurants.find(r => r.id === restId);
-      if (restaurant) showNavChoiceSheet(restaurant);
-      return;
-    }
-    const wbtn = e.target.closest('[data-action="wishlist"]');
-    if (wbtn && wbtn.closest('.card-list')) {
-      e.stopPropagation();
-      handlePersonalToggle(wbtn.dataset.id, 'wishlist');
-      return;
-    }
     const card = e.target.closest('[data-id]');
     if (card) openDetail(card.dataset.id);
   });
@@ -1502,6 +1139,16 @@ function attachEventListeners() {
     if (!chip) return;
     const dim = chip.dataset.filterDim;
     const val = chip.dataset.filterVal;
+    // Near me — requires GPS; show toast when disabled
+    if (dim === 'near_me') {
+      if (state.locationStatus !== 'granted') {
+        showToast('Enable location access to use Near me', 'info');
+        return;
+      }
+      state.activeFilters.near_me = state.activeFilters.near_me ? undefined : true;
+      applyFiltersAndSearch();
+      return;
+    }
     if (dim === 'open_now' || dim === 'halal' || dim === 'michelin') {
       state.activeFilters[dim] = state.activeFilters[dim] ? undefined : true;
     } else {
@@ -1524,93 +1171,66 @@ function attachEventListeners() {
     // Directions button — open nav choice sheet (B2_10)
     const dirBtn = e.target.closest('[data-action="directions"]');
     if (dirBtn) {
-      const restId = dirBtn.dataset.restaurantId;
-      const restaurant = state.restaurants.find(r => r.id === restId);
-      if (restaurant) showNavChoiceSheet(restaurant);
-      return;
-    }
-
-    // Star rating tap handler (MISSING-09)
-    const starBtn = e.target.closest('.star-btn');
-    if (starBtn) {
-      if (!navigator.onLine) { showToast("Can't save while offline", 'error'); return; }
-      const newRating  = parseInt(starBtn.dataset.rating, 10);
-      const restId     = starBtn.dataset.restaurantId;
-      const current    = state.personalData.get(restId) || {};
-      const ratingToSave = current.my_rating === newRating ? null : newRating;
-      // Optimistic UI
-      const container = starBtn.closest('.star-rating--interactive');
-      if (container) {
-        container.querySelectorAll('.star-btn').forEach((b, i) => {
-          const filled = ratingToSave && (i + 1) <= ratingToSave;
-          b.classList.toggle('star-btn--filled', !!filled);
-          b.setAttribute('aria-pressed', filled ? 'true' : 'false');
-        });
+      const lat  = parseFloat(dirBtn.dataset.lat);
+      const lng  = parseFloat(dirBtn.dataset.lng);
+      const name = dirBtn.dataset.name || '';
+      if (!isNaN(lat) && !isNaN(lng)) {
+        showNavChoiceSheet(lat, lng, name);
       }
-      await upsertPersonalData(restId, { my_rating: ratingToSave });
       return;
     }
 
-    const btn = e.target.closest('[data-action][data-id]');
-    if (!btn) return;
-    handlePersonalToggle(btn.dataset.id, btn.dataset.action);
+    // Wishlist / visited toggles (B2_09)
+    const actionBtn = e.target.closest('[data-action]');
+    if (!actionBtn) return;
+    const action = actionBtn.dataset.action;
+    const id     = actionBtn.dataset.id;
+    if ((action === 'wishlist' || action === 'visited') && id) {
+      await savePersonalStatus(id, action);
+      renderDetailPage(state.restaurants.find(r => r.id === id));
+      showToast(action === 'wishlist'
+        ? (state.personalData.get(id)?.status === 'wishlist' ? 'Added to Wishlist' : 'Removed from Wishlist')
+        : (state.personalData.get(id)?.status === 'visited'  ? 'Marked as Visited' : 'Marked Unvisited'),
+        'success'
+      );
+    }
   });
 
-  // ── Search input — 300ms debounce, min 2 chars (MISSING-07) ──
-  let searchDebounceTimer;
+  // Search input
   dom.searchInput?.addEventListener('input', (e) => {
-    clearTimeout(searchDebounceTimer);
-    const q = e.target.value.trim();
-    state.searchQuery = q;
-
-    // Show/hide clear button
-    if (dom.searchClearBtn) {
-      dom.searchClearBtn.classList.toggle('search-clear-btn--visible', q.length > 0);
-      dom.searchClearBtn.hidden = q.length === 0;
-    }
-
-    searchDebounceTimer = setTimeout(applyFiltersAndSearch, 300);
-  });
-
-  // Clear button
-  dom.searchClearBtn?.addEventListener('click', () => {
-    state.searchQuery = '';
-    if (dom.searchInput) dom.searchInput.value = '';
-    if (dom.searchClearBtn) {
-      dom.searchClearBtn.hidden = true;
-      dom.searchClearBtn.classList.remove('search-clear-btn--visible');
-    }
+    state.searchQuery = e.target.value.trim();
+    dom.searchClearBtn?.toggleAttribute('hidden', !state.searchQuery);
     applyFiltersAndSearch();
   });
 
-  // ── View toggle (All / Wishlist / Visited) — MISSING-11 ──
-  // Spec: docs/design/MISSING_FEATURES.md — MISSING-11
-  // 'all' = show all; 'wishlist' = wishlisted only; 'visited' = visited only
-  // Combines with other active filters using AND logic — does NOT clear existing filters
+  dom.searchClearBtn?.addEventListener('click', () => {
+    if (dom.searchInput) dom.searchInput.value = '';
+    state.searchQuery = '';
+    dom.searchClearBtn.setAttribute('hidden', '');
+    applyFiltersAndSearch();
+  });
+
+  // View toggle (All / Wishlist / Visited)
   dom.viewToggle?.addEventListener('click', (e) => {
-    const btn = e.target.closest('.view-toggle__btn');
+    const btn = e.target.closest('[data-mode]');
     if (!btn) return;
-    const mode = btn.dataset.mode; // 'all', 'wishlist', 'visited'
-    if (!mode) return;
-    state.viewMode = mode;
+    state.viewMode = btn.dataset.mode;
     dom.viewToggle.querySelectorAll('.view-toggle__btn').forEach(b => {
-      b.classList.toggle('view-toggle__btn--active', b.dataset.mode === mode);
+      b.classList.toggle('view-toggle__btn--active', b.dataset.mode === state.viewMode);
     });
     applyFiltersAndSearch();
   });
 
-  /* ── Sort sheet ──────────────────────────────────────────── */
-  // Spec: docs/design/MISSING_FEATURES.md — MISSING-14
-  // Sort button opens sheet; sheet shows 3 options; 'nearest' disabled if no GPS.
-  // Selecting option updates state.sortOrder and calls applyFiltersAndSearch().
+  // Hash-based routing
+  window.addEventListener('hashchange', () => handleRoute(window.location.hash));
 
+  // Sort button + sort sheet (MISSING-14)
   function showSortSheet() {
     const options = [
       { key: 'nearest', label: 'Nearest first', disabled: state.locationStatus !== 'granted' },
       { key: 'rating',  label: 'Highest rated' },
       { key: 'newest',  label: 'Newly added' }
     ];
-
     dom.sortSheet.innerHTML = options.map(o => `
       <div class="sort-option ${state.sortOrder === o.key ? 'sort-option--active' : ''} ${o.disabled ? 'sort-option--disabled' : ''}"
         data-sort="${o.key}" ${o.disabled ? 'aria-disabled="true"' : ''}>
@@ -1618,9 +1238,7 @@ function attachEventListeners() {
         ${state.sortOrder === o.key ? '<span class="sort-option__check">✓</span>' : ''}
       </div>
     `).join('');
-
     dom.sortSheetOverlay.classList.add('sort-sheet-overlay--visible');
-
     dom.sortSheetOverlay.addEventListener('click', (e) => {
       if (e.target === dom.sortSheetOverlay) {
         dom.sortSheetOverlay.classList.remove('sort-sheet-overlay--visible');
@@ -1639,127 +1257,99 @@ function attachEventListeners() {
 
   dom.sortBtn?.addEventListener('click', showSortSheet);
 
-  /* ── Pull-to-refresh ─────────────────────────────────────── */
+  // Pull-to-refresh (MISSING-13)
   // Spec: docs/design/MISSING_FEATURES.md — MISSING-13
-  // Detects downward pull when list is scrolled to top.
-  // Pull threshold: 60px. Calls refreshFromNetwork() on release.
-  // passive:true on touchstart/touchmove — required for iOS scroll performance.
-  (function initPullToRefresh() {
-    const listContainer = dom.cardList?.parentElement; // div.view__content
-    if (!listContainer) return;
+  // Threshold: 60px pull. Spinner shown during refresh. Debounced.
+  ;(function initPullToRefresh() {
+    let startY       = 0;
+    let pulling      = false;
+    let refreshing   = false;
+    const THRESHOLD  = 60;
+    const indicator  = dom.pullIndicator;
 
-    let startY = 0;
-    let pulling = false;
-    let refreshing = false;
-    const THRESHOLD = 60;
+    const listView = dom.viewList;
 
-    listContainer.addEventListener('touchstart', (e) => {
-      if (listContainer.scrollTop === 0) {
-        startY = e.touches[0].clientY;
-        pulling = true;
-      }
+    listView.addEventListener('touchstart', (e) => {
+      if (listView.scrollTop > 0) return;
+      startY  = e.touches[0].clientY;
+      pulling = true;
     }, { passive: true });
 
-    listContainer.addEventListener('touchmove', (e) => {
+    listView.addEventListener('touchmove', (e) => {
       if (!pulling || refreshing) return;
-      const currentY = e.touches[0].clientY;
-      const delta = currentY - startY;
-      if (delta > 10 && listContainer.scrollTop === 0) {
-        const progress = Math.min(delta, THRESHOLD);
-        if (dom.pullIndicator) {
-          dom.pullIndicator.classList.toggle('pull-indicator--active', progress >= THRESHOLD * 0.5);
+      const deltaY = e.touches[0].clientY - startY;
+      if (deltaY > 0 && listView.scrollTop <= 0) {
+        const progress = Math.min(deltaY / THRESHOLD, 1);
+        if (indicator) {
+          indicator.style.opacity  = String(progress);
+          indicator.style.transform = `translateY(${Math.min(deltaY * 0.4, 24)}px)`;
         }
       }
     }, { passive: true });
 
-    listContainer.addEventListener('touchend', async () => {
-      if (!pulling) return;
+    listView.addEventListener('touchend', async (e) => {
+      if (!pulling || refreshing) return;
       pulling = false;
-
-      if (!refreshing && dom.pullIndicator?.classList.contains('pull-indicator--active')) {
+      const deltaY = e.changedTouches[0].clientY - startY;
+      if (indicator) {
+        indicator.style.opacity   = '0';
+        indicator.style.transform = '';
+      }
+      if (deltaY >= THRESHOLD && listView.scrollTop <= 0) {
         refreshing = true;
+        if (indicator) indicator.classList.add('pull-indicator--active');
         try {
           await refreshFromNetwork();
-          showToast('Refreshed', 'success');
-        } catch (_) {
-          // refreshFromNetwork handles its own error toast
         } finally {
           refreshing = false;
-          dom.pullIndicator?.classList.remove('pull-indicator--active');
+          if (indicator) indicator.classList.remove('pull-indicator--active');
         }
-      } else {
-        dom.pullIndicator?.classList.remove('pull-indicator--active');
       }
-    });
+    }, { passive: true });
   })();
 }
 
-async function handlePersonalToggle(id, action) {
-  if (!id || !action) return;
-  const current = state.personalData.get(id) || {};
-  let updates = {};
-  let toast   = '';
-
-  if (action === 'wishlist') {
-    const next = !current.is_wishlisted;
-    updates    = { is_wishlisted: next };
-    toast      = next ? 'Saved to wishlist' : 'Removed from wishlist';
-  } else if (action === 'visited') {
-    const next = !current.is_visited;
-    updates    = { is_visited: next };
-    toast      = next ? 'Marked as visited ✓' : 'Removed from visited';
-  }
-
-  await upsertPersonalData(id, updates);
-  showToast(toast);
-
-  // Refresh detail page if currently showing this restaurant
-  if (state.selectedId === id && dom.viewDetail.classList.contains('view-detail--active')) {
-    const r = state.restaurants.find(r => r.id === id);
-    if (r) renderDetailPage(r);
-  }
-
-  // Re-render card in list
-  const cardEl = dom.cardList.querySelector(`[data-id="${id}"]`);
-  if (cardEl) {
-    const r = state.restaurants.find(r => r.id === id);
-    if (r) cardEl.outerHTML = cardHTML(r);
-  }
-
-  // Refresh map pin
-  if (state.activeView === 'map') {
-    const pin = state.mapPins.get(id);
-    if (pin && state.map) {
-      pin.remove();
-      state.mapPins.delete(id);
-      const r = state.restaurants.find(r => r.id === id);
-      if (r && r.lat && r.lng) renderPins([r]);
-    }
-  }
-}
-
-/* ── Init ───────────────────────────────────────────────────── */
+/* ============================================================
+   INIT
+   ============================================================ */
 
 async function init() {
-  state.personalId = getOrCreatePersonalId();
+  // 1. Map
+  initMap();
+
+  // 2. Event listeners
   attachEventListeners();
-  initKeyboardHandler();
-  initMap();      // Map is default — init early so tiles start loading
-  initRouter();   // Set up hashchange + handle initial hash
 
-  await Promise.allSettled([
-    loadPersonalData(),
-    fetchRestaurants(),
-  ]);
+  // 3. Personal data (async — non-blocking)
+  loadPersonalData().then(() => {
+    applyFiltersAndSearch();
+  });
 
-  // Render pins now that data is ready
-  if (state.map && state.activeView === 'map') {
-    state.map.invalidateSize();
-    renderPins(state.filtered);
+  // 4. Try IDB cache first (instant render)
+  const cached = await readFromIDB();
+  if (cached && cached.length > 0) {
+    state.restaurants = cached;
+    applyFiltersAndSearch();
   }
 
-  // Handle any route that was pending (restaurant detail before data loaded)
-  if (state.pendingRoute) {
+  // 5. GPS — triggers refreshFromNetwork() on success
+  requestLocation();
+
+  // 6. If no GPS (denied/unavailable), fetch from network after short delay
+  setTimeout(() => {
+    if (state.locationStatus !== 'granted' && state.restaurants.length === 0) {
+      refreshFromNetwork();
+    }
+  }, 1500);
+
+  // 7. Resolve pending route from hash
+  handleRoute(window.location.hash);
+
+  // 8. SW update check
+  checkForUpdate();
+
+  // 9. Resolve any pending route after data load
+  if (state.pendingRoute && state.restaurants.length > 0) {
     const pending = state.pendingRoute;
     state.pendingRoute = null;
     handleRoute(pending);
