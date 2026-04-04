@@ -76,6 +76,7 @@ const dom = {
   navChoiceSheet:    document.getElementById('nav-choice-sheet'),
   sortSheetOverlay:  document.getElementById('sort-sheet-overlay'),
   sortSheet:         document.getElementById('sort-sheet'),
+  sortBtn:           document.getElementById('sort-btn'),
   pullIndicator:     document.getElementById('pull-indicator'),
 };
 
@@ -1130,6 +1131,41 @@ function searchMatches(restaurant, query) {
 // Called after any filter change, search input change, or data load.
 // Applies: viewMode → filters → search query → sort → renderList
 
+/* ── Restaurant sorter ──────────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-14
+// 'nearest': _distanceMetres ascending — requires GPS (STEP_B2_05)
+// 'rating': wongnai_rating descending, nulls last
+// 'newest': created_at descending
+// Sort is applied AFTER all filters in applyFiltersAndSearch()
+
+function sortRestaurants(restaurants, sortOrder) {
+  const arr = [...restaurants];
+
+  if (sortOrder === 'nearest') {
+    return arr.sort((a, b) => {
+      const aD = a._distanceMetres ?? Infinity;
+      const bD = b._distanceMetres ?? Infinity;
+      return aD - bD;
+    });
+  }
+
+  if (sortOrder === 'rating') {
+    return arr.sort((a, b) => {
+      const aR = a.wongnai_rating ?? -1;
+      const bR = b.wongnai_rating ?? -1;
+      return bR - aR;
+    });
+  }
+
+  if (sortOrder === 'newest') {
+    return arr.sort((a, b) =>
+      new Date(b.created_at) - new Date(a.created_at)
+    );
+  }
+
+  return arr;
+}
+
 function applyFiltersAndSearch() {
   let results = [...state.restaurants];
 
@@ -1169,10 +1205,8 @@ function applyFiltersAndSearch() {
     results = results.filter(r => searchMatches(r, state.searchQuery));
   }
 
-  // 6. Sort — guarded until STEP_B2_19 implements sortRestaurants()
-  if (typeof sortRestaurants === 'function') {
-    results = sortRestaurants(results, state.sortOrder);
-  }
+  // 6. Sort
+  results = sortRestaurants(results, state.sortOrder);
 
   state.filtered = results;
 
@@ -1543,6 +1577,46 @@ function attachEventListeners() {
     });
     applyFiltersAndSearch();
   });
+
+  /* ── Sort sheet ──────────────────────────────────────────── */
+  // Spec: docs/design/MISSING_FEATURES.md — MISSING-14
+  // Sort button opens sheet; sheet shows 3 options; 'nearest' disabled if no GPS.
+  // Selecting option updates state.sortOrder and calls applyFiltersAndSearch().
+
+  function showSortSheet() {
+    const options = [
+      { key: 'nearest', label: 'Nearest first', disabled: state.locationStatus !== 'granted' },
+      { key: 'rating',  label: 'Highest rated' },
+      { key: 'newest',  label: 'Newly added' }
+    ];
+
+    dom.sortSheet.innerHTML = options.map(o => `
+      <div class="sort-option ${state.sortOrder === o.key ? 'sort-option--active' : ''} ${o.disabled ? 'sort-option--disabled' : ''}"
+        data-sort="${o.key}" ${o.disabled ? 'aria-disabled="true"' : ''}>
+        ${o.label}
+        ${state.sortOrder === o.key ? '<span class="sort-option__check">✓</span>' : ''}
+      </div>
+    `).join('');
+
+    dom.sortSheetOverlay.classList.add('sort-sheet-overlay--visible');
+
+    dom.sortSheetOverlay.addEventListener('click', (e) => {
+      if (e.target === dom.sortSheetOverlay) {
+        dom.sortSheetOverlay.classList.remove('sort-sheet-overlay--visible');
+      }
+    }, { once: true });
+  }
+
+  dom.sortSheet?.addEventListener('click', (e) => {
+    const option = e.target.closest('.sort-option');
+    if (!option || option.getAttribute('aria-disabled') === 'true') return;
+    const sort = option.dataset.sort;
+    state.sortOrder = sort;
+    dom.sortSheetOverlay.classList.remove('sort-sheet-overlay--visible');
+    applyFiltersAndSearch();
+  });
+
+  dom.sortBtn?.addEventListener('click', showSortSheet);
 
   /* ── Pull-to-refresh ─────────────────────────────────────── */
   // Spec: docs/design/MISSING_FEATURES.md — MISSING-13
