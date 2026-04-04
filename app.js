@@ -31,19 +31,18 @@ const state = {
   restaurants:    [],
   filtered:       [],
   activeFilters:  {},
-  activeView:     'map',        // Map is the default
+  activeView:     'map',
   selectedId:     null,
-  pendingRoute:   null,         // Hash to resolve after data loads
+  pendingRoute:   null,
   map:            null,
   mapPins:        new Map(),
   personalData:   new Map(),
   personalId:     null,
   isLoading:      false,
-  // ── Build 2: Geolocation (MISSING-01) ────────────────────
-  userLat:        null,         // GPS latitude — set by requestLocation()
-  userLng:        null,         // GPS longitude — set by requestLocation()
-  locationStatus: 'requesting', // 'requesting' | 'granted' | 'denied' | 'unavailable'
-  sortOrder:      'rating',     // 'nearest' | 'rating' — 'nearest' only when GPS granted
+  userLat:        null,
+  userLng:        null,
+  locationStatus: 'requesting',
+  sortOrder:      'rating',
 };
 
 /* ── DOM refs ──────────────────────────────────────────────── */
@@ -119,7 +118,6 @@ async function setCached(key, value) {
 
 /* ============================================================
    GEOLOCATION (MISSING-01)
-   Spec: docs/design/MISSING_FEATURES.md — MISSING-01
    ============================================================ */
 
 async function requestLocation() {
@@ -190,7 +188,6 @@ async function fetchRestaurants() {
 async function refreshFromNetwork() {
   try {
     let data, error;
-
     if (state.locationStatus === 'granted' && state.userLat && state.userLng) {
       ({ data, error } = await db.rpc('nearby_restaurants', {
         user_lat: state.userLat,
@@ -223,32 +220,23 @@ async function refreshFromNetwork() {
         `)
         .order('wongnai_rating', { ascending: false, nullsFirst: false })
       );
-      if (data) {
-        data = data.map(r => ({ ...r, _distanceMetres: null }));
-      }
+      if (data) data = data.map(r => ({ ...r, _distanceMetres: null }));
     }
-
     if (error) throw error;
-
     state.restaurants = data || [];
     state.isLoading   = false;
     await setCached(CACHE_KEY, state.restaurants);
     applyFilters();
-
     if (state.activeView === 'map' && state.map) {
       state.map.invalidateSize();
       renderPins(state.filtered);
     }
-
   } catch (err) {
     console.error('[fetch] refreshFromNetwork failed:', err);
     state.isLoading = false;
     if (state.restaurants.length === 0) {
       showToast('Could not load restaurants. Check your connection.', 'error');
-      if (dom.emptyState) {
-        dom.emptyState.removeAttribute('hidden');
-        dom.emptyState.style.display = 'flex';
-      }
+      if (dom.emptyState) { dom.emptyState.removeAttribute('hidden'); dom.emptyState.style.display = 'flex'; }
       if (dom.cardList) dom.cardList.style.display = 'none';
     } else {
       showToast('Using saved data — could not refresh.', 'error');
@@ -258,10 +246,7 @@ async function refreshFromNetwork() {
 }
 
 function renderLoadingState() {
-  if (dom.skeletonList) {
-    dom.skeletonList.removeAttribute('hidden');
-    dom.skeletonList.style.display = 'flex';
-  }
+  if (dom.skeletonList) { dom.skeletonList.removeAttribute('hidden'); dom.skeletonList.style.display = 'flex'; }
   if (dom.cardList)   dom.cardList.style.display   = 'none';
   if (dom.emptyState) dom.emptyState.style.display = 'none';
 }
@@ -270,10 +255,7 @@ function renderLoadingState() {
 
 function getOrCreatePersonalId() {
   let id = localStorage.getItem('personal_id');
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem('personal_id', id);
-  }
+  if (!id) { id = crypto.randomUUID(); localStorage.setItem('personal_id', id); }
   return id;
 }
 
@@ -288,16 +270,13 @@ async function loadPersonalData() {
       state.personalData.clear();
       data.forEach(row => state.personalData.set(row.restaurant_id, row));
     }
-  } catch (err) {
-    console.warn('[personal] loadPersonalData failed:', err);
-  }
+  } catch (err) { console.warn('[personal] loadPersonalData failed:', err); }
 }
 
 async function upsertPersonalData(restaurantId, updates) {
   if (!state.personalId) return;
   const current = state.personalData.get(restaurantId) || {};
-  const next    = { ...current, ...updates };
-  state.personalData.set(restaurantId, next);
+  state.personalData.set(restaurantId, { ...current, ...updates });
   try {
     await db.from('personal_data').upsert(
       { restaurant_id: restaurantId, device_id: state.personalId, ...updates },
@@ -317,32 +296,21 @@ const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
 function isOpenNow(openingHours) {
   if (!openingHours || typeof openingHours !== 'object') return 'unknown';
-
   const now       = new Date();
   const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: CONFIG.timezone,
-    weekday:  'short',
-    hour:     '2-digit',
-    minute:   '2-digit',
-    hour12:   false,
+    timeZone: CONFIG.timezone, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
   });
-
   const parts    = formatter.formatToParts(now);
   const get      = (type) => parts.find(p => p.type === type)?.value;
   const dayKey   = get('weekday')?.toLowerCase().slice(0, 3);
   const hourStr  = get('hour');
   const minStr   = get('minute');
-
   if (!dayKey || !hourStr || !minStr) return 'unknown';
-
   const currentMins = parseInt(hourStr, 10) * 60 + parseInt(minStr, 10);
-
   if (!(dayKey in openingHours)) return 'unknown';
-
   const daySlots = openingHours[dayKey];
   if (daySlots === null) return 'closed';
   if (!Array.isArray(daySlots) || daySlots.length === 0) return 'unknown';
-
   for (const slot of daySlots) {
     const [openH,  openM]  = (slot.open  || '').split(':').map(Number);
     const [closeH, closeM] = (slot.close || '').split(':').map(Number);
@@ -354,12 +322,11 @@ function isOpenNow(openingHours) {
       : (currentMins >= openMins && currentMins < closeMins);
     if (isOpen) return 'open';
   }
-
   return 'closed';
 }
 
 /* ── Distance formatter ─────────────────────────────────────
-   Spec: docs/design/MISSING_FEATURES.md — MISSING-02
+   Spec: MISSING-02. Walking speed: 80 m/min.
    ────────────────────────────────────────────────────────── */
 function formatDistance(metres, precision) {
   if (!precision || precision === 'no_location') return 'Find locally';
@@ -369,14 +336,10 @@ function formatDistance(metres, precision) {
     return '';
   }
   const prefix = precision === 'approximate' ? '~' : '';
-  if (metres < 1000) {
-    const m = Math.round(metres);
-    return `${prefix}${m} m`;
-  } else {
-    const km = (metres / 1000).toFixed(1);
-    const mins = Math.max(1, Math.round(metres / 80));
-    return `${prefix}${km} km · ${mins} min walk`;
-  }
+  if (metres < 1000) return `${prefix}${Math.round(metres)} m`;
+  const km = (metres / 1000).toFixed(1);
+  const mins = Math.max(1, Math.round(metres / 80));
+  return `${prefix}${km} km · ${mins} min walk`;
 }
 
 /* ============================================================
@@ -384,31 +347,106 @@ function formatDistance(metres, precision) {
    ============================================================ */
 
 /* ── Navigation destination resolver ────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-03
+// Spec: MISSING-03. Priority: exact/approximate coords → landmark → null
 
 function resolveNavDestination(restaurant) {
   const p = restaurant.location_precision;
   if ((p === 'exact' || p === 'approximate') && restaurant.lat && restaurant.lng) {
-    return {
-      lat: restaurant.lat,
-      lng: restaurant.lng,
-      isApproximate: p === 'approximate',
-      label: p === 'approximate' ? 'Location approximate' : null
-    };
+    return { lat: restaurant.lat, lng: restaurant.lng, isApproximate: p === 'approximate', label: p === 'approximate' ? 'Location approximate' : null };
   }
   if (restaurant.landmark_latitude && restaurant.landmark_longitude) {
-    return {
-      lat: restaurant.landmark_latitude,
-      lng: restaurant.landmark_longitude,
-      isApproximate: true,
-      label: 'Navigate to nearby landmark'
-    };
+    return { lat: restaurant.landmark_latitude, lng: restaurant.landmark_longitude, isApproximate: true, label: 'Navigate to nearby landmark' };
   }
   return null;
 }
 
+/* ── Navigation URL builder ─────────────────────────────── */
+// Spec: MISSING-04, MISSING-17
+// Returns { apple, google, streetView }
+// Apple Maps: maps:// scheme in <a href>
+// Google Maps: HTTPS Universal Link
+// Street View: HTTPS, only for exact precision
+
+function navUrls(restaurant) {
+  const dest = resolveNavDestination(restaurant);
+  let apple = null, google = null, streetView = null;
+
+  if (dest && dest.lat && dest.lng) {
+    const lat = dest.lat;
+    const lng = dest.lng;
+    apple  = `maps://maps.apple.com/?daddr=${lat},${lng}&dirflg=w`;
+    google = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=walking`;
+    // Street View only for exact precision (confirmed coordinates)
+    if (restaurant.location_precision === 'exact') {
+      streetView = `https://maps.google.com/?layer=c&cbll=${lat},${lng}`;
+    }
+  } else if (dest && dest.address) {
+    apple  = `maps://maps.apple.com/?q=${dest.address}`;
+    google = `https://www.google.com/maps/search/?api=1&query=${dest.address}`;
+  } else {
+    const name = encodeURIComponent(restaurant.name_th || restaurant.name_en || '');
+    apple  = `maps://maps.apple.com/?q=${name}`;
+    google = `https://www.google.com/maps/search/?api=1&query=${name}`;
+  }
+
+  return { apple, google, streetView };
+}
+
+/* ── Navigation choice sheet ────────────────────────────── */
+// Spec: MISSING-04. Opens bottom sheet with Apple Maps + Google Maps links.
+// No window.open() — all navigation via <a href> anchors.
+
+function showNavChoiceSheet(restaurant) {
+  const urls = navUrls(restaurant);
+  const dest = resolveNavDestination(restaurant);
+  const isApprox = dest?.isApproximate;
+  const approxLabel = isApprox && dest.label
+    ? `<p class="nav-choice-sheet__approx">${escapeHTML(dest.label)}</p>`
+    : '';
+
+  const sheetContent = `
+    <p class="nav-choice-sheet__title">Open with</p>
+    ${approxLabel}
+    <a href="${escapeHTML(urls.apple)}" class="nav-choice-btn">
+      <span aria-hidden="true">🗺</span> Apple Maps
+    </a>
+    <a href="${escapeHTML(urls.google)}" class="nav-choice-btn" target="_blank" rel="noopener noreferrer">
+      <span aria-hidden="true">📍</span> Google Maps
+    </a>
+    ${urls.streetView ? `<a href="${escapeHTML(urls.streetView)}" class="street-view-link" target="_blank" rel="noopener noreferrer">📷 Street View</a>` : ''}
+    <button class="nav-choice-btn nav-choice-btn--cancel">Cancel</button>
+  `;
+
+  const overlay = document.getElementById('nav-choice-overlay');
+  const sheet   = document.getElementById('nav-choice-sheet');
+  if (!overlay || !sheet) {
+    // Fallback: open Google Maps if overlay not yet in HTML (added in STEP_B2_11)
+    window.location.href = urls.apple;
+    return;
+  }
+
+  sheet.innerHTML = sheetContent;
+  overlay.classList.add('nav-choice-overlay--visible');
+
+  function dismiss(e) {
+    if (e.target === overlay || e.target.classList.contains('nav-choice-btn--cancel')) {
+      overlay.classList.remove('nav-choice-overlay--visible');
+      overlay.removeEventListener('click', dismiss);
+    }
+  }
+  overlay.addEventListener('click', dismiss);
+}
+
+/* ── Legacy maps URL (used for disabled fallback in locationBlockHTML) */
+function mapsUrl(restaurant) {
+  if (restaurant.lat && restaurant.lng) {
+    return `https://maps.google.com/maps?q=${encodeURIComponent(restaurant.lat)},${encodeURIComponent(restaurant.lng)}(${encodeURIComponent(restaurant.name_en || restaurant.name_th || 'Restaurant')})`;
+  }
+  return `https://maps.google.com/maps?q=${encodeURIComponent([restaurant.name_en, restaurant.city, 'Thailand'].filter(Boolean).join(' '))}`;
+}
+
 /* ── Location block HTML builder ─────────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-03
+// Spec: MISSING-03
 
 function locationBlockHTML(restaurant) {
   const p    = restaurant.location_precision;
@@ -436,13 +474,12 @@ function locationBlockHTML(restaurant) {
   if (areaCity) html += `<p class="detail__area">${escapeHTML(areaCity)}</p>`;
 
   if (dest) {
-    const navUrl = `https://maps.google.com/maps?q=${encodeURIComponent(dest.lat)},${encodeURIComponent(dest.lng)}(${encodeURIComponent(restaurant.name_en || restaurant.name_th || 'Restaurant')})`;
     const approxBadge = dest.isApproximate && dest.label
       ? `<span class="precision-badge">${escapeHTML(dest.label)}</span>`
       : '';
     html += `<div class="detail__directions-area">
       ${approxBadge}
-      <a class="maps-btn" href="${escapeHTML(navUrl)}" rel="noopener noreferrer" aria-label="Get directions to ${escapeHTML(restaurant.name_en || restaurant.name_th || 'restaurant')}">Get Directions</a>
+      <button class="maps-btn" data-action="directions" data-id="${restaurant.id}" aria-label="Get directions to ${escapeHTML(restaurant.name_en || restaurant.name_th || 'restaurant')}">Get Directions</button>
     </div>`;
   } else {
     html += `<div class="detail__directions-area">
@@ -453,19 +490,6 @@ function locationBlockHTML(restaurant) {
   return html;
 }
 
-function mapsUrl(restaurant) {
-  if (restaurant.lat && restaurant.lng) {
-    const lat  = encodeURIComponent(restaurant.lat);
-    const lng  = encodeURIComponent(restaurant.lng);
-    const name = encodeURIComponent(restaurant.name_en || restaurant.name_th || 'Restaurant');
-    return `https://maps.google.com/maps?q=${lat},${lng}(${name})`;
-  }
-  const query = encodeURIComponent(
-    [restaurant.name_en, restaurant.city, 'Thailand'].filter(Boolean).join(' ')
-  );
-  return `https://maps.google.com/maps?q=${query}`;
-}
-
 /* ============================================================
    KEYBOARD HANDLER
    ============================================================ */
@@ -474,21 +498,17 @@ function initKeyboardHandler() {
   if (!window.visualViewport) return;
   let keyboardOpen = false;
   window.visualViewport.addEventListener('resize', () => {
-    const viewportHeight = window.visualViewport.height;
-    const windowHeight   = window.innerHeight;
-    const keyboardHeight = windowHeight - viewportHeight;
+    const keyboardHeight = window.innerHeight - window.visualViewport.height;
     if (keyboardHeight > 150) {
       if (!keyboardOpen) {
         keyboardOpen = true;
         document.documentElement.style.setProperty('--keyboard-height', `${keyboardHeight}px`);
         document.body.classList.add('keyboard-open');
       }
-    } else {
-      if (keyboardOpen) {
-        keyboardOpen = false;
-        document.documentElement.style.setProperty('--keyboard-height', '0px');
-        document.body.classList.remove('keyboard-open');
-      }
+    } else if (keyboardOpen) {
+      keyboardOpen = false;
+      document.documentElement.style.setProperty('--keyboard-height', '0px');
+      document.body.classList.remove('keyboard-open');
     }
   });
   window.visualViewport.addEventListener('scroll', () => {
@@ -500,35 +520,56 @@ function initKeyboardHandler() {
    CARD HTML
    ============================================================ */
 
+/* ── Dishes preview (card) ──────────────────────────────── */
+// Spec: MISSING-06. Compact: "Must order: dish1 · dish2". Signature first. Max 2.
+
+function dishesPreviewHTML(dishes) {
+  if (!dishes || !Array.isArray(dishes) || dishes.length === 0) return '';
+  const sorted = [...dishes].sort((a, b) => (b.is_signature ? 1 : 0) - (a.is_signature ? 1 : 0));
+  const shown = sorted.slice(0, 2).map(d => d.name_th || d.name_en || '').filter(Boolean);
+  if (shown.length === 0) return '';
+  return `<div class="card__dishes-preview">
+    <span class="card__dishes-label">Must order:</span> ${escapeHTML(shown.join(' · '))}
+  </div>`;
+}
+
+/* ── Dishes detail (full) ────────────────────────────────── */
+// Spec: MISSING-06. "Known for" heading. All dishes, signature badge, price.
+
+function dishesDetailHTML(dishes) {
+  if (!dishes || !Array.isArray(dishes) || dishes.length === 0) return '';
+  const items = dishes.map(d => `
+    <div class="dish-item ${d.is_signature ? 'dish-item--signature' : ''}">
+      ${d.name_th ? `<span class="dish-item__name-th">${escapeHTML(d.name_th)}</span>` : ''}
+      ${d.name_en ? `<span class="dish-item__name-en">${escapeHTML(d.name_en)}</span>` : ''}
+      ${d.price_approx ? `<span class="dish-item__price">฿${escapeHTML(String(d.price_approx))}</span>` : ''}
+      ${d.notes ? `<p class="dish-item__notes">${escapeHTML(d.notes)}</p>` : ''}
+      ${d.is_signature ? `<span class="dish-item__badge">Signature</span>` : ''}
+    </div>
+  `).join('');
+  return `<section class="dishes-section">
+    <h3 class="dishes-section__heading">Known for</h3>
+    ${items}
+  </section>`;
+}
+
 /* ── Photo strip builder ────────────────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-05
-// Priority: identification_photo_url → cart/sign → exterior → dish/interior
-// Maximum 3 photos shown. Uses scroll-snap for swipe behaviour.
-// openBadgeHTML + overlaysHTML (city badge, wishlist, visited) are absolutely
-// positioned within the strip.
+// Spec: MISSING-05. Priority: identification_photo_url → cart/sign → exterior → dish/interior
 
 function photoStripHTML(restaurant, openBadgeHTML, overlaysHTML) {
   const photos = [];
-
-  // Step 1: identification photo always first
   if (restaurant.identification_photo_url) {
     photos.push({ url: restaurant.identification_photo_url, type: 'identification' });
   }
-
-  // Step 2: sort restaurant.photos[] by type priority, de-dup against identification
   if (Array.isArray(restaurant.photos)) {
     const typePriority = { cart: 0, sign: 1, exterior: 2, dish: 3, interior: 4 };
     const sorted = [...restaurant.photos].sort((a, b) =>
       (typePriority[a.type] ?? 9) - (typePriority[b.type] ?? 9)
     );
     sorted.forEach(p => {
-      if (photos.length < 5 && p.url !== restaurant.identification_photo_url) {
-        photos.push(p);
-      }
+      if (photos.length < 5 && p.url !== restaurant.identification_photo_url) photos.push(p);
     });
   }
-
-  // No photos: render cuisine placeholder
   if (photos.length === 0) {
     const cuisineText = Array.isArray(restaurant.cuisine_types) && restaurant.cuisine_types.length
       ? restaurant.cuisine_types.slice(0, 2).map(c => c.replace(/_/g, ' ')).join(' · ')
@@ -539,12 +580,9 @@ function photoStripHTML(restaurant, openBadgeHTML, overlaysHTML) {
       ${overlaysHTML}
     </div>`;
   }
-
-  // Render strip — max 3 photos
   const slides = photos.slice(0, 3).map(p =>
     `<img class="card__photo-slide" src="${escapeHTML(p.url)}" alt="" loading="lazy" decoding="async">`
   ).join('');
-
   return `<div class="card__photo-strip">
     ${slides}
     ${openBadgeHTML}
@@ -554,12 +592,7 @@ function photoStripHTML(restaurant, openBadgeHTML, overlaysHTML) {
 
 function escapeHTML(str) {
   if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
 }
 
 function cityBadgeClass(city) {
@@ -576,12 +609,8 @@ function cardHTML(r) {
   const openStatus = isOpenNow(r.opening_hours);
   const personal   = state.personalData.get(r.id) || {};
 
-  const openClass = openStatus === 'open'   ? 'open-indicator--open'
-                  : openStatus === 'closed' ? 'open-indicator--closed'
-                  :                           'open-indicator--unknown';
-  const openLabel = openStatus === 'open'   ? 'Open now'
-                  : openStatus === 'closed' ? 'Closed'
-                  :                           '';
+  const openClass = openStatus === 'open' ? 'open-indicator--open' : openStatus === 'closed' ? 'open-indicator--closed' : 'open-indicator--unknown';
+  const openLabel = openStatus === 'open' ? 'Open now' : openStatus === 'closed' ? 'Closed' : '';
 
   const wishHTML = personal.is_wishlisted
     ? `<button class="wishlist-btn wishlist-btn--active" data-action="wishlist" data-id="${r.id}" aria-label="Remove from wishlist" aria-pressed="true">♥</button>`
@@ -591,28 +620,18 @@ function cardHTML(r) {
     ? `<span class="visited-marker visited-marker--visited" aria-label="You've visited">✓ Visited</span>`
     : '';
 
-  // Build 2: Photo strip (MISSING-05)
   const cityAbbrev = { bangkok: 'BKK', chiang_mai: 'CNX', koh_chang: 'KCH' };
   const cityCode = r.city ? (cityAbbrev[r.city] || cityLabel(r.city)) : '';
   const cityBadgeInStrip = cityCode ? `<span class="badge badge--city">${escapeHTML(cityCode)}</span>` : '';
+  const openBadgeHTML = openLabel ? `<span class="open-indicator ${openClass}" aria-label="${openLabel}">${openLabel}</span>` : '';
+  const photoAreaHTML = photoStripHTML(r, openBadgeHTML, `${cityBadgeInStrip}${wishHTML}${visitedHTML}`);
 
-  const openBadgeHTML = openLabel
-    ? `<span class="open-indicator ${openClass}" aria-label="${openLabel}">${openLabel}</span>`
-    : '';
-  const overlaysHTML = `${cityBadgeInStrip}${wishHTML}${visitedHTML}`;
-  const photoAreaHTML = photoStripHTML(r, openBadgeHTML, overlaysHTML);
+  const cuisineTag  = Array.isArray(r.cuisine_types) && r.cuisine_types.length ? `<span class="badge badge--cuisine">${escapeHTML(r.cuisine_types[0].replace(/_/g,' '))}</span>` : '';
+  const priceTag    = r.price_range ? `<span class="badge badge--price" aria-label="Price range ${r.price_range}">${'฿'.repeat(r.price_range)}</span>` : '';
+  const michelinTag = r.michelin_stars > 0 ? `<span class="badge badge--michelin">${'★'.repeat(r.michelin_stars)}</span>` : r.michelin_bib ? `<span class="badge badge--michelin">Bib</span>` : '';
+  const halalTag    = r.is_halal ? `<span class="badge badge--halal">Halal</span>` : '';
+  const cityTag     = r.city ? `<span class="badge ${cityBadgeClass(r.city)}">${cityLabel(r.city)}</span>` : '';
 
-  const cuisineTag = Array.isArray(r.cuisine_types) && r.cuisine_types.length
-    ? `<span class="badge badge--cuisine">${escapeHTML(r.cuisine_types[0].replace(/_/g, ' '))}</span>` : '';
-  const priceTag = r.price_range
-    ? `<span class="badge badge--price" aria-label="Price range ${r.price_range}">${'฿'.repeat(r.price_range)}</span>` : '';
-  const michelinTag = r.michelin_stars > 0
-    ? `<span class="badge badge--michelin">${'★'.repeat(r.michelin_stars)}</span>`
-    : r.michelin_bib ? `<span class="badge badge--michelin">Bib</span>` : '';
-  const halalTag = r.is_halal ? `<span class="badge badge--halal">Halal</span>` : '';
-  const cityTag  = r.city ? `<span class="badge ${cityBadgeClass(r.city)}">${cityLabel(r.city)}</span>` : '';
-
-  // Build 2: Distance display (MISSING-02)
   const precision = r.location_precision || 'no_location';
   let distanceText = '';
   if (precision === 'area_only') {
@@ -622,10 +641,7 @@ function cardHTML(r) {
     distanceText = `<span class="card__distance">Find locally</span>`;
   } else {
     const fd = formatDistance(r._distanceMetres, precision);
-    if (fd) {
-      const cls = precision === 'approximate' ? 'card__distance card__distance--approximate' : 'card__distance';
-      distanceText = `<span class="${cls}">${fd}</span>`;
-    }
+    if (fd) distanceText = `<span class="${precision === 'approximate' ? 'card__distance card__distance--approximate' : 'card__distance'}">${fd}</span>`;
   }
 
   return `
@@ -636,9 +652,10 @@ function cardHTML(r) {
     ${r.name_en && r.name_th ? `<p class="card__name-english">${escapeHTML(r.name_en)}</p>` : ''}
     ${r.tagline ? `<p class="card__tagline">${escapeHTML(r.tagline)}</p>` : ''}
     <div class="card__meta">${cuisineTag}${priceTag}${distanceText}${michelinTag}${halalTag}${cityTag}</div>
-    ${r.area ? `<p class="card__location">${escapeHTML(r.area.replace(/_/g, ' '))}</p>` : ''}
+    ${r.area ? `<p class="card__location">${escapeHTML(r.area.replace(/_/g,' '))}</p>` : ''}
+    ${dishesPreviewHTML(r.dishes)}
     <div class="card__actions">
-      <a class="directions-btn" href="${escapeHTML(mapsUrl(r))}" rel="noopener noreferrer" aria-label="Directions to ${escapeHTML(r.name_en || r.name_th)}">Directions</a>
+      <button class="directions-btn" data-action="directions" data-id="${r.id}" aria-label="Directions to ${escapeHTML(r.name_en || r.name_th)}">Directions</button>
     </div>
   </div>
 </article>`;
@@ -653,16 +670,8 @@ const MAP_TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">
 
 function initMap() {
   if (state.map) return;
-  if (typeof L === 'undefined') {
-    console.error('[map] Leaflet not loaded — cannot initialise map');
-    return;
-  }
-  state.map = L.map(dom.mapContainer, {
-    center: [CONFIG.mapDefaultLat, CONFIG.mapDefaultLng],
-    zoom:   CONFIG.mapDefaultZoom,
-    zoomControl: true,
-    attributionControl: true,
-  });
+  if (typeof L === 'undefined') { console.error('[map] Leaflet not loaded'); return; }
+  state.map = L.map(dom.mapContainer, { center: [CONFIG.mapDefaultLat, CONFIG.mapDefaultLng], zoom: CONFIG.mapDefaultZoom, zoomControl: true, attributionControl: true });
   L.tileLayer(MAP_TILE_URL, { attribution: MAP_TILE_ATTR, maxZoom: 19 }).addTo(state.map);
   setTimeout(() => state.map.invalidateSize(), 50);
 }
@@ -671,7 +680,6 @@ function renderPins(restaurants) {
   if (!state.map) return;
   state.mapPins.forEach(marker => marker.remove());
   state.mapPins.clear();
-
   restaurants.forEach(r => {
     if (!r.lat || !r.lng) return;
     const openStatus = isOpenNow(r.opening_hours);
@@ -682,24 +690,17 @@ function renderPins(restaurants) {
     if (personal.is_visited)          classes.push('map-pin--visited');
     if (personal.is_wishlisted)       classes.push('map-pin--wishlisted');
     if (r.id === state.selectedId)    classes.push('map-pin--selected');
-
-    const fullName  = r.name_en || r.name_th || '';
-    const rawLabel  = r.tagline || fullName;
-    const pinLabel  = rawLabel.length > 22 ? rawLabel.slice(0, 21) + '…' : rawLabel;
-
+    const fullName = r.name_en || r.name_th || '';
+    const rawLabel = r.tagline || fullName;
+    const pinLabel = rawLabel.length > 22 ? rawLabel.slice(0, 21) + '…' : rawLabel;
     const statusHTML = openStatus === 'open'
       ? `<span class="map-pin__dot"></span><span class="map-pin__status">Open</span>`
-      : openStatus === 'closed'
-        ? `<span class="map-pin__dot"></span><span class="map-pin__status">Closed</span>`
-        : '';
-
+      : openStatus === 'closed' ? `<span class="map-pin__dot"></span><span class="map-pin__status">Closed</span>` : '';
     const icon = L.divIcon({
       className: '',
       html: `<div class="${classes.join(' ')}" aria-label="${escapeHTML(fullName)}">${statusHTML}<span class="map-pin__name">${escapeHTML(pinLabel)}</span><div class="map-pin__tail"></div></div>`,
-      iconSize:   [0, 0],
-      iconAnchor: [0, 0],
+      iconSize: [0,0], iconAnchor: [0,0],
     });
-
     const marker = L.marker([r.lat, r.lng], { icon }).addTo(state.map);
     marker.on('click', () => openDetail(r.id));
     state.mapPins.set(r.id, marker);
@@ -709,8 +710,7 @@ function renderPins(restaurants) {
 function selectMapPin(id) {
   state.mapPins.forEach((marker, markerId) => {
     const el = marker.getElement()?.querySelector('.map-pin');
-    if (!el) return;
-    el.classList.toggle('map-pin--selected', markerId === id);
+    if (el) el.classList.toggle('map-pin--selected', markerId === id);
   });
   const marker = state.mapPins.get(id);
   if (marker && state.map) state.map.panTo(marker.getLatLng(), { animate: true });
@@ -724,39 +724,33 @@ function buildFilterChips() {
   const container = dom.filterChips;
   if (!container) return;
   const chips = [];
-
   const openNowActive = state.activeFilters.open_now === true;
-  chips.push(`<button class="filter-chip${openNowActive ? ' filter-chip--active' : ''}" data-filter-dim="open_now" data-filter-val="true" aria-pressed="${openNowActive}" aria-label="Show open now">Open now</button>`);
-
+  chips.push(`<button class="filter-chip${openNowActive?' filter-chip--active':''}" data-filter-dim="open_now" data-filter-val="true" aria-pressed="${openNowActive}" aria-label="Show open now">Open now</button>`);
   const cities = [...new Set(state.restaurants.map(r => r.city).filter(Boolean))].sort();
   cities.forEach(city => {
     const isActive = state.activeFilters.city === city;
-    chips.push(`<button class="filter-chip${isActive ? ' filter-chip--active' : ''}" data-filter-dim="city" data-filter-val="${escapeHTML(city)}" aria-pressed="${isActive}" aria-label="Filter by ${cityLabel(city)}">${cityLabel(city)}</button>`);
+    chips.push(`<button class="filter-chip${isActive?' filter-chip--active':''}" data-filter-dim="city" data-filter-val="${escapeHTML(city)}" aria-pressed="${isActive}" aria-label="Filter by ${cityLabel(city)}">${cityLabel(city)}</button>`);
   });
-
   const cuisines = [...new Set(state.restaurants.flatMap(r => Array.isArray(r.cuisine_types) ? r.cuisine_types : []))].sort();
   cuisines.forEach(cuisine => {
     if (!cuisine) return;
     const isActive = state.activeFilters.cuisine === cuisine;
-    const label    = cuisine.replace(/_/g, ' ');
-    chips.push(`<button class="filter-chip${isActive ? ' filter-chip--active' : ''}" data-filter-dim="cuisine" data-filter-val="${escapeHTML(cuisine)}" aria-pressed="${isActive}" aria-label="Filter by ${escapeHTML(label)}">${escapeHTML(label)}</button>`);
+    const label = cuisine.replace(/_/g,' ');
+    chips.push(`<button class="filter-chip${isActive?' filter-chip--active':''}" data-filter-dim="cuisine" data-filter-val="${escapeHTML(cuisine)}" aria-pressed="${isActive}" aria-label="Filter by ${escapeHTML(label)}">${escapeHTML(label)}</button>`);
   });
-
   const prices = [...new Set(state.restaurants.map(r => r.price_range).filter(Boolean))].sort();
   prices.forEach(price => {
     const isActive = state.activeFilters.price_range === price;
-    chips.push(`<button class="filter-chip${isActive ? ' filter-chip--active' : ''}" data-filter-dim="price_range" data-filter-val="${price}" aria-pressed="${isActive}" aria-label="Price range ${'฿'.repeat(price)}">${'฿'.repeat(price)}</button>`);
+    chips.push(`<button class="filter-chip${isActive?' filter-chip--active':''}" data-filter-dim="price_range" data-filter-val="${price}" aria-pressed="${isActive}" aria-label="Price range ${'฿'.repeat(price)}">${'฿'.repeat(price)}</button>`);
   });
-
   if (state.restaurants.some(r => r.is_halal)) {
     const isActive = state.activeFilters.halal === true;
-    chips.push(`<button class="filter-chip${isActive ? ' filter-chip--active' : ''}" data-filter-dim="halal" data-filter-val="true" aria-pressed="${isActive}" aria-label="Halal only">Halal</button>`);
+    chips.push(`<button class="filter-chip${isActive?' filter-chip--active':''}" data-filter-dim="halal" data-filter-val="true" aria-pressed="${isActive}" aria-label="Halal only">Halal</button>`);
   }
   if (state.restaurants.some(r => r.michelin_stars > 0 || r.michelin_bib)) {
     const isActive = state.activeFilters.michelin === true;
-    chips.push(`<button class="filter-chip${isActive ? ' filter-chip--active' : ''}" data-filter-dim="michelin" data-filter-val="true" aria-pressed="${isActive}" aria-label="Michelin recognised">Michelin</button>`);
+    chips.push(`<button class="filter-chip${isActive?' filter-chip--active':''}" data-filter-dim="michelin" data-filter-val="true" aria-pressed="${isActive}" aria-label="Michelin recognised">Michelin</button>`);
   }
-
   container.innerHTML = chips.join('');
 }
 
@@ -768,7 +762,6 @@ function applyFilters() {
   if (state.activeFilters.open_now)    results = results.filter(r => isOpenNow(r.opening_hours) === 'open');
   if (state.activeFilters.halal)       results = results.filter(r => r.is_halal);
   if (state.activeFilters.michelin)    results = results.filter(r => r.michelin_stars > 0 || r.michelin_bib);
-
   state.filtered = results;
   renderList(state.filtered);
   buildFilterChips();
@@ -778,18 +771,12 @@ function applyFilters() {
 
 function renderList(restaurants) {
   if (!dom.cardList) return;
-  if (dom.skeletonList) {
-    dom.skeletonList.style.display = 'none';
-    dom.skeletonList.setAttribute('hidden', '');
-  }
+  if (dom.skeletonList) { dom.skeletonList.style.display = 'none'; dom.skeletonList.setAttribute('hidden',''); }
   dom.cardList.removeAttribute('hidden');
   dom.cardList.style.display = 'flex';
   if (!restaurants || restaurants.length === 0) {
     dom.cardList.innerHTML = '';
-    if (dom.emptyState) {
-      dom.emptyState.removeAttribute('hidden');
-      dom.emptyState.style.display = 'flex';
-    }
+    if (dom.emptyState) { dom.emptyState.removeAttribute('hidden'); dom.emptyState.style.display = 'flex'; }
     return;
   }
   if (dom.emptyState) dom.emptyState.style.display = 'none';
@@ -797,7 +784,7 @@ function renderList(restaurants) {
 }
 
 /* ============================================================
-   ROUTER — hash-based navigation
+   ROUTER
    ============================================================ */
 
 function initRouter() {
@@ -807,53 +794,32 @@ function initRouter() {
 
 function handleRoute(hash) {
   if (!hash) hash = '';
-
   if (hash.startsWith('#restaurant/')) {
     const slug = decodeURIComponent(hash.slice(12));
-    if (state.restaurants.length === 0) {
-      state.pendingRoute = hash;
-      return;
-    }
-    const r = state.restaurants.find(r => r.slug === slug) ||
-              state.restaurants.find(r => String(r.id) === slug);
-    if (r) {
-      renderDetailPage(r);
-    } else {
-      window.location.replace('#map');
-    }
+    if (state.restaurants.length === 0) { state.pendingRoute = hash; return; }
+    const r = state.restaurants.find(r => r.slug === slug) || state.restaurants.find(r => String(r.id) === slug);
+    if (r) renderDetailPage(r); else window.location.replace('#map');
   } else if (hash === '#list') {
-    hideDetailPage();
-    applyView('list');
+    hideDetailPage(); applyView('list');
   } else {
-    hideDetailPage();
-    applyView('map');
+    hideDetailPage(); applyView('map');
   }
 }
-
-/* ── View management ──────────────────────────────────────── */
 
 function applyView(view) {
   state.activeView = view;
   const isList = view === 'list';
-
   dom.viewList.classList.toggle('view--active', isList);
   dom.viewList.setAttribute('aria-hidden', String(!isList));
   dom.viewMap.classList.toggle('view--active', !isList);
   dom.viewMap.setAttribute('aria-hidden', String(isList));
-
   dom.navList.setAttribute('aria-pressed', String(isList));
   dom.navList.classList.toggle('nav-item--active', isList);
   dom.navMap.setAttribute('aria-pressed', String(!isList));
   dom.navMap.classList.toggle('nav-item--active', !isList);
-
   if (!isList) {
     initMap();
-    setTimeout(() => {
-      if (state.map) {
-        state.map.invalidateSize();
-        renderPins(state.filtered);
-      }
-    }, 50);
+    setTimeout(() => { if (state.map) { state.map.invalidateSize(); renderPins(state.filtered); } }, 50);
   }
 }
 
@@ -862,46 +828,38 @@ function applyView(view) {
 function openDetail(id) {
   const r = state.restaurants.find(r => r.id === id);
   if (!r) return;
-  const key = r.slug || String(r.id);
-  window.location.hash = '#restaurant/' + encodeURIComponent(key);
+  window.location.hash = '#restaurant/' + encodeURIComponent(r.slug || String(r.id));
 }
 
 function renderDetailPage(r) {
   state.selectedId = r.id;
   if (state.activeView === 'map') selectMapPin(r.id);
-
   dom.detailTitle.textContent = r.name_th || r.name_en;
 
   const personal   = state.personalData.get(r.id) || {};
   const openStatus = isOpenNow(r.opening_hours);
-
-  const photos       = Array.isArray(r.photos) ? r.photos : [];
+  const photos     = Array.isArray(r.photos) ? r.photos : [];
   const primaryPhoto = photos.find(p => p.is_primary) || photos[0];
-  const photosHTML   = primaryPhoto
+  const photosHTML = primaryPhoto
     ? `<div class="detail-photo"><img src="${escapeHTML(primaryPhoto.url)}" alt="${escapeHTML(r.name_en || r.name_th)} photo" loading="eager" decoding="async"></div>`
     : '';
 
-  const openClass = openStatus === 'open'   ? 'open-indicator--open'
-                  : openStatus === 'closed' ? 'open-indicator--closed'
-                  :                           'open-indicator--unknown';
-  const openLabel = openStatus === 'open'   ? 'Open now'
-                  : openStatus === 'closed' ? 'Closed'
-                  :                           'Hours unknown';
+  const openClass = openStatus === 'open' ? 'open-indicator--open' : openStatus === 'closed' ? 'open-indicator--closed' : 'open-indicator--unknown';
+  const openLabel = openStatus === 'open' ? 'Open now' : openStatus === 'closed' ? 'Closed' : 'Hours unknown';
 
-  const dayNames  = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
+  const dayNames  = { mon:'Mon', tue:'Tue', wed:'Wed', thu:'Thu', fri:'Fri', sat:'Sat', sun:'Sun' };
   const hoursRows = r.opening_hours
-    ? Object.entries(dayNames).map(([key, label]) =>
+    ? Object.entries(dayNames).map(([key,label]) =>
         `<div class="detail-row"><span class="detail-row__label">${label}</span><span class="detail-row__value">${formatDayHours(r.opening_hours[key])}</span></div>`
       ).join('')
     : '<div class="detail-row"><span class="detail-row__value">Hours not available</span></div>';
 
-  const cuisineDisplay = Array.isArray(r.cuisine_types)
-    ? r.cuisine_types.map(c => c.replace(/_/g, ' ')).join(', ') : '';
+  const cuisineDisplay = Array.isArray(r.cuisine_types) ? r.cuisine_types.map(c => c.replace(/_/g,' ')).join(', ') : '';
 
   const detailPrecision = r.location_precision || 'no_location';
   let detailDistance = '';
   if (detailPrecision === 'area_only' && r.area) {
-    detailDistance = `<span class="precision-badge">📍 ${escapeHTML(r.area.replace(/_/g, ' '))}</span>`;
+    detailDistance = `<span class="precision-badge">📍 ${escapeHTML(r.area.replace(/_/g,' '))}</span>`;
   } else if (detailPrecision === 'no_location') {
     detailDistance = `<span class="precision-badge">Find locally</span>`;
   } else {
@@ -912,40 +870,30 @@ function renderDetailPage(r) {
   dom.detailBody.innerHTML = `
     <div class="detail-body__inner">
       ${photosHTML}
-
       <div class="detail-meta-row">
         <span class="open-indicator ${openClass}">${openLabel}</span>
         ${detailDistance}
         ${r.name_en && r.name_th ? `<p class="card__name-english">${escapeHTML(r.name_en)}</p>` : ''}
       </div>
-
+      ${dishesDetailHTML(r.dishes)}
       ${locationBlockHTML(r)}
-
       <div class="detail-section">
         ${cuisineDisplay ? `<div class="detail-row"><span class="detail-row__label">Cuisine</span><span class="detail-row__value">${escapeHTML(cuisineDisplay)}</span></div>` : ''}
-        ${r.city ? `<div class="detail-row"><span class="detail-row__label">City</span><span class="detail-row__value">${cityLabel(r.city)}${r.area ? ` — ${escapeHTML(r.area.replace(/_/g, ' '))}` : ''}</span></div>` : ''}
+        ${r.city ? `<div class="detail-row"><span class="detail-row__label">City</span><span class="detail-row__value">${cityLabel(r.city)}${r.area ? ` — ${escapeHTML(r.area.replace(/_/g,' '))}` : ''}</span></div>` : ''}
         ${r.price_range ? `<div class="detail-row"><span class="detail-row__label">Price</span><span class="detail-row__value">${'฿'.repeat(r.price_range)}</span></div>` : ''}
         ${r.is_halal ? `<div class="detail-row"><span class="detail-row__label">Halal</span><span class="detail-row__value">Yes ✓</span></div>` : ''}
-        ${r.michelin_stars > 0 ? `<div class="detail-row"><span class="detail-row__label">Michelin</span><span class="detail-row__value">${'★'.repeat(r.michelin_stars)} Star${r.michelin_stars > 1 ? 's' : ''}</span></div>` : r.michelin_bib ? `<div class="detail-row"><span class="detail-row__label">Michelin</span><span class="detail-row__value">Bib Gourmand</span></div>` : ''}
+        ${r.michelin_stars > 0 ? `<div class="detail-row"><span class="detail-row__label">Michelin</span><span class="detail-row__value">${'★'.repeat(r.michelin_stars)} Star${r.michelin_stars>1?'s':''}</span></div>` : r.michelin_bib ? `<div class="detail-row"><span class="detail-row__label">Michelin</span><span class="detail-row__value">Bib Gourmand</span></div>` : ''}
         ${r.description_en ? `<div class="detail-row"><span class="detail-row__label">About</span><span class="detail-row__value">${escapeHTML(r.description_en)}</span></div>` : ''}
       </div>
-
       <div class="detail-section">
         <div class="detail-row detail-row--header"><span class="detail-row__label">Opening Hours</span></div>
         ${hoursRows}
       </div>
-
       <div class="detail-personal">
-        <button class="personal-btn${personal.is_wishlisted ? ' personal-btn--active' : ''}"
-                data-action="wishlist" data-id="${r.id}"
-                aria-pressed="${!!personal.is_wishlisted}"
-                aria-label="${personal.is_wishlisted ? 'Remove from wishlist' : 'Add to wishlist'}">
+        <button class="personal-btn${personal.is_wishlisted?' personal-btn--active':''}" data-action="wishlist" data-id="${r.id}" aria-pressed="${!!personal.is_wishlisted}" aria-label="${personal.is_wishlisted?'Remove from wishlist':'Add to wishlist'}">
           ${personal.is_wishlisted ? '♥ Wishlisted' : '♡ Wishlist'}
         </button>
-        <button class="personal-btn${personal.is_visited ? ' personal-btn--visited' : ''}"
-                data-action="visited" data-id="${r.id}"
-                aria-pressed="${!!personal.is_visited}"
-                aria-label="${personal.is_visited ? 'Mark as not visited' : 'Mark as visited'}">
+        <button class="personal-btn${personal.is_visited?' personal-btn--visited':''}" data-action="visited" data-id="${r.id}" aria-pressed="${!!personal.is_visited}" aria-label="${personal.is_visited?'Mark as not visited':'Mark as visited'}">
           ${personal.is_visited ? '✓ Visited' : '○ Mark visited'}
         </button>
       </div>
@@ -974,10 +922,7 @@ function showToast(message, type = 'info') {
   toast.setAttribute('role', 'status');
   dom.toastContainer.appendChild(toast);
   requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add('toast--visible')));
-  setTimeout(() => {
-    toast.classList.remove('toast--visible');
-    setTimeout(() => toast.remove(), 400);
-  }, 3500);
+  setTimeout(() => { toast.classList.remove('toast--visible'); setTimeout(() => toast.remove(), 400); }, 3500);
 }
 
 /* ── Hours formatting ────────────────────────────────────── */
@@ -997,12 +942,18 @@ function formatDayHours(daySlots) {
 
 function attachEventListeners() {
   dom.cardList.addEventListener('click', (e) => {
-    const wbtn = e.target.closest('[data-action="wishlist"]');
-    if (wbtn && wbtn.closest('.card-list')) {
+    // Directions button
+    const dirBtn = e.target.closest('[data-action="directions"]');
+    if (dirBtn) {
       e.stopPropagation();
-      handlePersonalToggle(wbtn.dataset.id, 'wishlist');
+      const r = state.restaurants.find(r => String(r.id) === String(dirBtn.dataset.id));
+      if (r) showNavChoiceSheet(r);
       return;
     }
+    // Wishlist button
+    const wbtn = e.target.closest('[data-action="wishlist"]');
+    if (wbtn) { e.stopPropagation(); handlePersonalToggle(wbtn.dataset.id, 'wishlist'); return; }
+    // Card tap → detail
     const card = e.target.closest('[data-id]');
     if (card) openDetail(card.dataset.id);
   });
@@ -1015,9 +966,7 @@ function attachEventListeners() {
     if (dim === 'open_now' || dim === 'halal' || dim === 'michelin') {
       state.activeFilters[dim] = state.activeFilters[dim] ? undefined : true;
     } else {
-      state.activeFilters[dim] = state.activeFilters[dim] === val
-        ? undefined
-        : (dim === 'price_range' ? Number(val) : val);
+      state.activeFilters[dim] = state.activeFilters[dim] === val ? undefined : (dim === 'price_range' ? Number(val) : val);
     }
     applyFilters();
   });
@@ -1027,6 +976,13 @@ function attachEventListeners() {
   dom.detailBack.addEventListener('click', () => history.back());
 
   dom.detailBody.addEventListener('click', (e) => {
+    // Directions button in detail view
+    const dirBtn = e.target.closest('[data-action="directions"]');
+    if (dirBtn) {
+      const r = state.restaurants.find(r => String(r.id) === String(dirBtn.dataset.id));
+      if (r) showNavChoiceSheet(r);
+      return;
+    }
     const btn = e.target.closest('[data-action][data-id]');
     if (!btn) return;
     handlePersonalToggle(btn.dataset.id, btn.dataset.action);
@@ -1036,38 +992,28 @@ function attachEventListeners() {
 async function handlePersonalToggle(id, action) {
   if (!id || !action) return;
   const current = state.personalData.get(id) || {};
-  let updates = {};
-  let toast   = '';
-
+  let updates = {}, toast = '';
   if (action === 'wishlist') {
     const next = !current.is_wishlisted;
-    updates    = { is_wishlisted: next };
-    toast      = next ? 'Saved to wishlist' : 'Removed from wishlist';
+    updates = { is_wishlisted: next };
+    toast   = next ? 'Saved to wishlist' : 'Removed from wishlist';
   } else if (action === 'visited') {
     const next = !current.is_visited;
-    updates    = { is_visited: next };
-    toast      = next ? 'Marked as visited ✓' : 'Removed from visited';
+    updates = { is_visited: next };
+    toast   = next ? 'Marked as visited ✓' : 'Removed from visited';
   }
-
   await upsertPersonalData(id, updates);
   showToast(toast);
-
   if (state.selectedId === id && dom.viewDetail.classList.contains('view-detail--active')) {
     const r = state.restaurants.find(r => r.id === id);
     if (r) renderDetailPage(r);
   }
-
   const cardEl = dom.cardList.querySelector(`[data-id="${id}"]`);
-  if (cardEl) {
-    const r = state.restaurants.find(r => r.id === id);
-    if (r) cardEl.outerHTML = cardHTML(r);
-  }
-
+  if (cardEl) { const r = state.restaurants.find(r => r.id === id); if (r) cardEl.outerHTML = cardHTML(r); }
   if (state.activeView === 'map') {
     const pin = state.mapPins.get(id);
     if (pin && state.map) {
-      pin.remove();
-      state.mapPins.delete(id);
+      pin.remove(); state.mapPins.delete(id);
       const r = state.restaurants.find(r => r.id === id);
       if (r && r.lat && r.lng) renderPins([r]);
     }
@@ -1082,17 +1028,8 @@ async function init() {
   initKeyboardHandler();
   initMap();
   initRouter();
-
-  await Promise.allSettled([
-    loadPersonalData(),
-    fetchRestaurants(),
-  ]);
-
-  if (state.map && state.activeView === 'map') {
-    state.map.invalidateSize();
-    renderPins(state.filtered);
-  }
-
+  await Promise.allSettled([loadPersonalData(), fetchRestaurants()]);
+  if (state.map && state.activeView === 'map') { state.map.invalidateSize(); renderPins(state.filtered); }
   if (state.pendingRoute) {
     const pending = state.pendingRoute;
     state.pendingRoute = null;
