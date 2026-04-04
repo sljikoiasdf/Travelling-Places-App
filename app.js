@@ -389,6 +389,39 @@ function isOpenNow(openingHours) {
   return 'closed';
 }
 
+/* ── Distance formatter ─────────────────────────────────────
+   Spec: docs/design/MISSING_FEATURES.md — MISSING-02
+   Returns a human-readable distance string based on metres and
+   location_precision tier. Walking speed: 80 m/min.
+   Precision values (per SCHEMA_GUIDE): 'exact', 'approximate', 'area_only'
+   ────────────────────────────────────────────────────────── */
+function formatDistance(metres, precision) {
+  // No location data — don't show a distance
+  if (!precision || precision === 'no_location') return 'Find locally';
+
+  // Area-only: caller renders area name instead of distance
+  if (precision === 'area_only') return null;
+
+  // No distance available (GPS denied or geom null)
+  if (metres === null || metres === undefined) {
+    if (precision === 'approximate') return 'Location approximate';
+    return '';
+  }
+
+  const prefix = precision === 'approximate' ? '~' : '';
+
+  if (metres < 1000) {
+    // Under 1km: show metres
+    const m = Math.round(metres);
+    return `${prefix}${m} m`;
+  } else {
+    // 1km and over: show km + walking time
+    const km = (metres / 1000).toFixed(1);
+    const mins = Math.max(1, Math.round(metres / 80));
+    return `${prefix}${km} km · ${mins} min walk`;
+  }
+}
+
 /* ============================================================
    NAVIGATION URLS
    ============================================================ */
@@ -500,6 +533,22 @@ function cardHTML(r) {
   const halalTag = r.is_halal ? `<span class="badge badge--halal">Halal</span>` : '';
   const cityTag  = r.city ? `<span class="badge ${cityBadgeClass(r.city)}">${cityLabel(r.city)}</span>` : '';
 
+  // Build 2: Distance display (MISSING-02)
+  const precision = r.location_precision || 'no_location';
+  let distanceText = '';
+  if (precision === 'area_only') {
+    const areaName = r.area ? r.area.replace(/_/g, ' ') : null;
+    distanceText = areaName ? `<span class="card__distance card__distance--area-only">${escapeHTML(areaName)}</span>` : '';
+  } else if (precision === 'no_location') {
+    distanceText = `<span class="card__distance">Find locally</span>`;
+  } else {
+    const fd = formatDistance(r._distanceMetres, precision);
+    if (fd) {
+      const cls = precision === 'approximate' ? 'card__distance card__distance--approximate' : 'card__distance';
+      distanceText = `<span class="${cls}">${fd}</span>`;
+    }
+  }
+
   return `
 <article class="card" role="listitem" data-id="${r.id}" aria-label="${escapeHTML(r.name_en || r.name_th)}">
   <div class="card__photo-strip${primaryPhoto ? '' : ' card__photo-strip--empty'}" aria-hidden="true">
@@ -512,7 +561,7 @@ function cardHTML(r) {
     <h2 class="card__name-thai">${escapeHTML(r.name_th || r.name_en)}</h2>
     ${r.name_en && r.name_th ? `<p class="card__name-english">${escapeHTML(r.name_en)}</p>` : ''}
     ${r.tagline ? `<p class="card__tagline">${escapeHTML(r.tagline)}</p>` : ''}
-    <div class="card__meta">${cuisineTag}${priceTag}${michelinTag}${halalTag}${cityTag}</div>
+    <div class="card__meta">${cuisineTag}${priceTag}${distanceText}${michelinTag}${halalTag}${cityTag}</div>
     ${r.area ? `<p class="card__location">${escapeHTML(r.area.replace(/_/g, ' '))}</p>` : ''}
     <div class="card__actions">
       <a class="directions-btn" href="${escapeHTML(mapsUrl(r))}" rel="noopener noreferrer" aria-label="Directions to ${escapeHTML(r.name_en || r.name_th)}">Directions</a>
@@ -786,12 +835,27 @@ function renderDetailPage(r) {
   const cuisineDisplay = Array.isArray(r.cuisine_types)
     ? r.cuisine_types.map(c => c.replace(/_/g, ' ')).join(', ') : '';
 
+  // Build 2: Distance display in detail view (MISSING-02)
+  const detailPrecision = r.location_precision || 'no_location';
+  let detailDistance = '';
+  if (detailPrecision === 'area_only' && r.area) {
+    detailDistance = `<span class="precision-badge">📍 ${escapeHTML(r.area.replace(/_/g, ' '))}</span>`;
+  } else if (detailPrecision === 'no_location') {
+    detailDistance = `<span class="precision-badge">Find locally</span>`;
+  } else {
+    const fd = formatDistance(r._distanceMetres, detailPrecision);
+    if (fd) {
+      detailDistance = `<span class="precision-badge">${fd}</span>`;
+    }
+  }
+
   dom.detailBody.innerHTML = `
     <div class="detail-body__inner">
       ${photosHTML}
 
       <div class="detail-meta-row">
         <span class="open-indicator ${openClass}">${openLabel}</span>
+        ${detailDistance}
         ${r.name_en && r.name_th ? `<p class="card__name-english">${escapeHTML(r.name_en)}</p>` : ''}
       </div>
 
