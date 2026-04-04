@@ -446,7 +446,21 @@ function isOpenNow(openingHours) {
     const isOpen = closeMins < openMins
       ? (currentMins >= openMins || currentMins < closeMins)
       : (currentMins >= openMins && currentMins < closeMins);
-    if (isOpen) return 'open';
+    if (isOpen) {
+      // closes_soon: within 30 minutes of closing (BUG-B2-02 fix)
+      const minsToClose = closeMins >= currentMins
+        ? closeMins - currentMins
+        : (closeMins + 1440) - currentMins; // wraps past midnight
+      return minsToClose <= 30 ? 'closes_soon' : 'open';
+    }
+  }
+
+  // opens_soon: next opening is within 30 minutes (BUG-B2-02 fix)
+  for (const slot of daySlots) {
+    const [oh, om] = (slot.open || '').split(':').map(Number);
+    if (isNaN(oh)) continue;
+    const openMins = oh * 60 + om;
+    if (openMins > currentMins && openMins - currentMins <= 30) return 'opens_soon';
   }
 
   return 'closed';
@@ -898,12 +912,16 @@ function cardHTML(r) {
   const openStatus = isOpenNow(r.opening_hours);
   const personal   = state.personalData.get(r.id) || {};
 
-  const openClass = openStatus === 'open'   ? 'open-indicator--open'
-                  : openStatus === 'closed' ? 'open-indicator--closed'
-                  :                           'open-indicator--unknown';
-  const openLabel = openStatus === 'open'   ? 'Open now'
-                  : openStatus === 'closed' ? 'Closed'
-                  :                           '';
+  const openClass = openStatus === 'open'         ? 'open-indicator--open'
+                  : openStatus === 'closes_soon'  ? 'open-indicator--soon'
+                  : openStatus === 'opens_soon'   ? 'open-indicator--soon'
+                  : openStatus === 'closed'       ? 'open-indicator--closed'
+                  :                                 'open-indicator--unknown';
+  const openLabel = openStatus === 'open'         ? 'Open now'
+                  : openStatus === 'closes_soon'  ? 'Closes soon'
+                  : openStatus === 'opens_soon'   ? 'Opens soon'
+                  : openStatus === 'closed'       ? 'Closed'
+                  :                                 'Hours unknown';
 
   const wishHTML = personal.is_wishlisted
     ? `<button class="wishlist-btn wishlist-btn--active" data-action="wishlist" data-id="${r.id}" aria-label="Remove from wishlist" aria-pressed="true">♥</button>`
@@ -1193,7 +1211,7 @@ function applyFiltersAndSearch() {
   if (state.activeFilters.city)        results = results.filter(r => r.city === state.activeFilters.city);
   if (state.activeFilters.cuisine)     results = results.filter(r => Array.isArray(r.cuisine_types) && r.cuisine_types.includes(state.activeFilters.cuisine));
   if (state.activeFilters.price_range) results = results.filter(r => r.price_range === Number(state.activeFilters.price_range));
-  if (state.activeFilters.open_now)    results = results.filter(r => isOpenNow(r.opening_hours) === 'open');
+  if (state.activeFilters.open_now)    results = results.filter(r => { const s = isOpenNow(r.opening_hours); return s === 'open' || s === 'closes_soon'; });
   if (state.activeFilters.halal)       results = results.filter(r => r.is_halal);
   if (state.activeFilters.michelin)    results = results.filter(r => r.michelin_stars > 0 || r.michelin_bib);
 
@@ -1353,12 +1371,16 @@ function renderDetailPage(r) {
     : '';
 
   // Status
-  const openClass = openStatus === 'open'   ? 'open-indicator--open'
-                  : openStatus === 'closed' ? 'open-indicator--closed'
-                  :                           'open-indicator--unknown';
-  const openLabel = openStatus === 'open'   ? 'Open now'
-                  : openStatus === 'closed' ? 'Closed'
-                  :                           'Hours unknown';
+  const openClass = openStatus === 'open'         ? 'open-indicator--open'
+                  : openStatus === 'closes_soon'  ? 'open-indicator--soon'
+                  : openStatus === 'opens_soon'   ? 'open-indicator--soon'
+                  : openStatus === 'closed'       ? 'open-indicator--closed'
+                  :                                 'open-indicator--unknown';
+  const openLabel = openStatus === 'open'         ? 'Open now'
+                  : openStatus === 'closes_soon'  ? 'Closes soon'
+                  : openStatus === 'opens_soon'   ? 'Opens soon'
+                  : openStatus === 'closed'       ? 'Closed'
+                  :                                 'Hours unknown';
 
   // Hours rows
   const dayNames  = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
