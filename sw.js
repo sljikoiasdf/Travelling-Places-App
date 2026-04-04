@@ -6,8 +6,8 @@
 
 'use strict';
 
-const CACHE_NAME  = 'thailand-food-v4';
-const PHOTO_CACHE = 'thailand-food-photos-v4';
+const CACHE_NAME  = 'thailand-food-v5';
+const PHOTO_CACHE = 'thailand-food-photos-v5';
 
 // Static shell assets — pre-cached on install
 // Supabase JS client and Leaflet CDN are included (versioned URLs are stable)
@@ -16,7 +16,12 @@ const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/styles.css',
-  '/app.js',
+  '/styles-b2.css',
+  '/app-config.js',
+  '/app-data.js',
+  '/app-ui.js',
+  '/app-list.js',
+  '/app-main.js',
   '/manifest.json',
   '/icon-180.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
