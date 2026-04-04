@@ -145,8 +145,12 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <!-- Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- App -->
-  <script src="app.js" defer></script>
+  <!-- App — split into modules (each under 25KB) for maintainability -->
+  <script src="app-config.js" defer></script>
+  <script src="app-data.js" defer></script>
+  <script src="app-ui.js" defer></script>
+  <script src="app-list.js" defer></script>
+  <script src="app-main.js" defer></script>
   <!-- SW -->
   <script>
     if ('serviceWorker' in navigator) {
