@@ -485,17 +485,15 @@ function formatDistance(metres, precision) {
     return '';
   }
 
-  const prefix = precision === 'approximate' ? '~' : '';
+  // CSS .card__distance--approximate::before adds '~' — do not add prefix here (BUG-B2-04 fix)
 
   if (metres < 1000) {
-    // Under 1km: show metres
     const m = Math.round(metres);
-    return `${prefix}${m} m`;
+    return `${m} m`;
   } else {
-    // 1km and over: show km + walking time
     const km = (metres / 1000).toFixed(1);
     const mins = Math.max(1, Math.round(metres / 80));
-    return `${prefix}${km} km · ${mins} min walk`;
+    return `${km} km · ${mins} min walk`;
   }
 }
 
@@ -1403,7 +1401,8 @@ function renderDetailPage(r) {
   } else {
     const fd = formatDistance(r._distanceMetres, detailPrecision);
     if (fd) {
-      detailDistance = `<span class="precision-badge">${fd}</span>`;
+      const approxPrefix = detailPrecision === 'approximate' ? '~' : '';
+      detailDistance = `<span class="precision-badge">${approxPrefix}${fd}</span>`;
     }
   }
 
