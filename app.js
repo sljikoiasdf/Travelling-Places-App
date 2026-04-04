@@ -659,6 +659,35 @@ function showNavChoiceSheet(restaurant) {
   }
 }
 
+/* ── Contact row HTML builder ────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-12
+// Phone uses tel: URI — no window.open(). Works offline (native iOS call).
+// Website link: HTTPS, target="_blank", rel="noopener noreferrer"
+// Omitted entirely if both phone and website are null.
+// Note: schema has 'phone' and 'website' columns (no wongnai_url — only wongnai_rating number)
+
+function contactRowHTML(restaurant) {
+  const items = [];
+
+  if (restaurant.phone) {
+    // Format Thai phone number: 0x-xxx-xxxx or 0xx-xxx-xxxx
+    const raw = restaurant.phone.replace(/\s+/g, '');
+    let display = raw;
+    const thaiMatch = raw.replace(/^\+66/, '0').match(/^(0\d{1,2})(\d{3,4})(\d{4})$/);
+    if (thaiMatch) display = `${thaiMatch[1]}-${thaiMatch[2]}-${thaiMatch[3]}`;
+
+    items.push(`<a class="contact-link contact-link--phone" href="tel:${encodeURI(raw)}">📞 ${escapeHTML(display)}</a>`);
+  }
+
+  if (restaurant.website) {
+    items.push(`<a class="contact-link" href="${escapeHTML(restaurant.website)}" target="_blank" rel="noopener noreferrer">Website ↗</a>`);
+  }
+
+  if (items.length === 0) return '';
+
+  return `<div class="contact-row">${items.join('')}</div>`;
+}
+
 /* ============================================================
    KEYBOARD HANDLER
    ============================================================ */
@@ -1309,6 +1338,8 @@ function renderDetailPage(r) {
       ${dishesDetailHTML(r.dishes)}
 
       ${locationBlockHTML(r)}
+
+      ${contactRowHTML(r)}
 
       <div class="detail-section">
         ${cuisineDisplay ? `<div class="detail-row"><span class="detail-row__label">Cuisine</span><span class="detail-row__value">${escapeHTML(cuisineDisplay)}</span></div>` : ''}
