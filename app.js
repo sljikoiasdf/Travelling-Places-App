@@ -122,10 +122,6 @@ async function setCached(key, value) {
    Spec: docs/design/MISSING_FEATURES.md — MISSING-01
    ============================================================ */
 
-/* ── GPS request ─────────────────────────────────────────────
-   Requests location on app open; sets state.userLat/Lng and
-   state.locationStatus. Timeout: 8s. No localStorage persist.
-   ────────────────────────────────────────────────────────── */
 async function requestLocation() {
   if (!navigator.geolocation) {
     state.locationStatus = 'unavailable';
@@ -142,7 +138,6 @@ async function requestLocation() {
         resolve();
       },
       () => {
-        // Denied or error
         state.locationStatus = 'denied';
         resolve();
       },
@@ -151,13 +146,9 @@ async function requestLocation() {
   });
 }
 
-/* ── Haversine distance calculator ──────────────────────────
-   Returns distance in metres between two lat/lng coordinates.
-   Used as fallback when RPC does not return dist_metres.
-   ────────────────────────────────────────────────────────── */
 function haversineDistance(lat1, lng1, lat2, lng2) {
   if (!lat1 || !lng1 || !lat2 || !lng2) return null;
-  const R = 6371000; // Earth radius in metres
+  const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLng = (lng2 - lng1) * Math.PI / 180;
   const a = Math.sin(dLat / 2) ** 2 +
@@ -166,10 +157,6 @@ function haversineDistance(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-/* ── GPS status notice ───────────────────────────────────────
-   Shows a notice when GPS is denied/unavailable.
-   Reads #location-notice element in index.html.
-   ────────────────────────────────────────────────────────── */
 function renderLocationNotice() {
   const el = document.getElementById('location-notice');
   if (!el) return;
@@ -188,11 +175,7 @@ function renderLocationNotice() {
 async function fetchRestaurants() {
   state.isLoading = true;
   renderLoadingState();
-
-  // Request GPS first — completes before data fetch (8s timeout max)
   await requestLocation();
-
-  // Try cache first (cache is location-agnostic — stores full restaurant list)
   const cached = await getCached(CACHE_KEY);
   if (cached) {
     state.restaurants = cached;
@@ -201,7 +184,6 @@ async function fetchRestaurants() {
     refreshFromNetwork().catch(() => {});
     return;
   }
-
   await refreshFromNetwork();
 }
 
@@ -210,17 +192,12 @@ async function refreshFromNetwork() {
     let data, error;
 
     if (state.locationStatus === 'granted' && state.userLat && state.userLng) {
-      // GPS available — use nearby_restaurants RPC (sorted by distance)
-      // radius_m: 50000 (50km) — returns all restaurants within 50km of user
       ({ data, error } = await db.rpc('nearby_restaurants', {
         user_lat: state.userLat,
         user_lng: state.userLng,
         radius_m: 50000,
         limit_n:  100
       }));
-
-      // Attach _distanceMetres to each restaurant for use by distance display (MISSING-02)
-      // RPC returns dist_metres column; fall back to haversine if null
       if (data) {
         data = data.map(r => ({
           ...r,
@@ -230,7 +207,6 @@ async function refreshFromNetwork() {
         }));
       }
     } else {
-      // No GPS — fetch all restaurants sorted by rating
       ({ data, error } = await db
         .from('restaurants')
         .select(`
@@ -247,8 +223,6 @@ async function refreshFromNetwork() {
         `)
         .order('wongnai_rating', { ascending: false, nullsFirst: false })
       );
-
-      // No GPS — attach null _distanceMetres for consistency (used by MISSING-02)
       if (data) {
         data = data.map(r => ({ ...r, _distanceMetres: null }));
       }
@@ -258,11 +232,9 @@ async function refreshFromNetwork() {
 
     state.restaurants = data || [];
     state.isLoading   = false;
-
     await setCached(CACHE_KEY, state.restaurants);
     applyFilters();
 
-    // Render map pins if map is currently visible
     if (state.activeView === 'map' && state.map) {
       state.map.invalidateSize();
       renderPins(state.filtered);
@@ -271,7 +243,6 @@ async function refreshFromNetwork() {
   } catch (err) {
     console.error('[fetch] refreshFromNetwork failed:', err);
     state.isLoading = false;
-
     if (state.restaurants.length === 0) {
       showToast('Could not load restaurants. Check your connection.', 'error');
       if (dom.emptyState) {
@@ -313,7 +284,6 @@ async function loadPersonalData() {
       .from('personal_data')
       .select('restaurant_id, is_wishlisted, is_visited, my_rating')
       .eq('device_id', state.personalId);
-
     if (data) {
       state.personalData.clear();
       data.forEach(row => state.personalData.set(row.restaurant_id, row));
@@ -328,7 +298,6 @@ async function upsertPersonalData(restaurantId, updates) {
   const current = state.personalData.get(restaurantId) || {};
   const next    = { ...current, ...updates };
   state.personalData.set(restaurantId, next);
-
   try {
     await db.from('personal_data').upsert(
       { restaurant_id: restaurantId, device_id: state.personalId, ...updates },
@@ -391,31 +360,19 @@ function isOpenNow(openingHours) {
 
 /* ── Distance formatter ─────────────────────────────────────
    Spec: docs/design/MISSING_FEATURES.md — MISSING-02
-   Returns a human-readable distance string based on metres and
-   location_precision tier. Walking speed: 80 m/min.
-   Precision values (per SCHEMA_GUIDE): 'exact', 'approximate', 'area_only'
    ────────────────────────────────────────────────────────── */
 function formatDistance(metres, precision) {
-  // No location data — don't show a distance
   if (!precision || precision === 'no_location') return 'Find locally';
-
-  // Area-only: caller renders area name instead of distance
   if (precision === 'area_only') return null;
-
-  // No distance available (GPS denied or geom null)
   if (metres === null || metres === undefined) {
     if (precision === 'approximate') return 'Location approximate';
     return '';
   }
-
   const prefix = precision === 'approximate' ? '~' : '';
-
   if (metres < 1000) {
-    // Under 1km: show metres
     const m = Math.round(metres);
     return `${prefix}${m} m`;
   } else {
-    // 1km and over: show km + walking time
     const km = (metres / 1000).toFixed(1);
     const mins = Math.max(1, Math.round(metres / 80));
     return `${prefix}${km} km · ${mins} min walk`;
@@ -428,12 +385,9 @@ function formatDistance(metres, precision) {
 
 /* ── Navigation destination resolver ────────────────────── */
 // Spec: docs/design/MISSING_FEATURES.md — MISSING-03
-// Priority: exact/approximate coords → landmark coords → null
-// Returns { lat, lng, isApproximate, label } or null if no navigable destination
 
 function resolveNavDestination(restaurant) {
   const p = restaurant.location_precision;
-
   if ((p === 'exact' || p === 'approximate') && restaurant.lat && restaurant.lng) {
     return {
       lat: restaurant.lat,
@@ -442,7 +396,6 @@ function resolveNavDestination(restaurant) {
       label: p === 'approximate' ? 'Location approximate' : null
     };
   }
-
   if (restaurant.landmark_latitude && restaurant.landmark_longitude) {
     return {
       lat: restaurant.landmark_latitude,
@@ -451,20 +404,17 @@ function resolveNavDestination(restaurant) {
       label: 'Navigate to nearby landmark'
     };
   }
-
-  return null; // no navigable destination
+  return null;
 }
 
 /* ── Location block HTML builder ─────────────────────────── */
 // Spec: docs/design/MISSING_FEATURES.md — MISSING-03
-// Renders cart-finder-box, landmark note, area/city, and directions button
 
 function locationBlockHTML(restaurant) {
   const p    = restaurant.location_precision;
   const dest = resolveNavDestination(restaurant);
   let html   = '';
 
-  // Cart / no-location: show finder box prominently
   if (!p || p === 'no_location' || p === 'area_only') {
     if (restaurant.cart_identifier || restaurant.location_notes) {
       html += `<div class="cart-finder-box">
@@ -475,19 +425,16 @@ function locationBlockHTML(restaurant) {
     }
   }
 
-  // Nearby landmark note
   if (restaurant.nearby_landmark_en) {
     html += `<p class="landmark-note">Near: ${escapeHTML(restaurant.nearby_landmark_en)}</p>`;
   }
 
-  // Area + city
   const areaCity = [
     restaurant.area ? restaurant.area.replace(/_/g, ' ') : null,
     restaurant.city ? restaurant.city.replace(/_/g, ' ') : null
   ].filter(Boolean).join(', ');
   if (areaCity) html += `<p class="detail__area">${escapeHTML(areaCity)}</p>`;
 
-  // Directions button — precision-aware
   if (dest) {
     const navUrl = `https://maps.google.com/maps?q=${encodeURIComponent(dest.lat)},${encodeURIComponent(dest.lng)}(${encodeURIComponent(restaurant.name_en || restaurant.name_th || 'Restaurant')})`;
     const approxBadge = dest.isApproximate && dest.label
@@ -525,14 +472,11 @@ function mapsUrl(restaurant) {
 
 function initKeyboardHandler() {
   if (!window.visualViewport) return;
-
   let keyboardOpen = false;
-
   window.visualViewport.addEventListener('resize', () => {
     const viewportHeight = window.visualViewport.height;
     const windowHeight   = window.innerHeight;
     const keyboardHeight = windowHeight - viewportHeight;
-
     if (keyboardHeight > 150) {
       if (!keyboardOpen) {
         keyboardOpen = true;
@@ -547,17 +491,66 @@ function initKeyboardHandler() {
       }
     }
   });
-
   window.visualViewport.addEventListener('scroll', () => {
-    if (window.visualViewport.offsetTop > 0) {
-      window.scrollTo(0, window.visualViewport.offsetTop);
-    }
+    if (window.visualViewport.offsetTop > 0) window.scrollTo(0, window.visualViewport.offsetTop);
   });
 }
 
 /* ============================================================
    CARD HTML
    ============================================================ */
+
+/* ── Photo strip builder ────────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-05
+// Priority: identification_photo_url → cart/sign → exterior → dish/interior
+// Maximum 3 photos shown. Uses scroll-snap for swipe behaviour.
+// openBadgeHTML + overlaysHTML (city badge, wishlist, visited) are absolutely
+// positioned within the strip.
+
+function photoStripHTML(restaurant, openBadgeHTML, overlaysHTML) {
+  const photos = [];
+
+  // Step 1: identification photo always first
+  if (restaurant.identification_photo_url) {
+    photos.push({ url: restaurant.identification_photo_url, type: 'identification' });
+  }
+
+  // Step 2: sort restaurant.photos[] by type priority, de-dup against identification
+  if (Array.isArray(restaurant.photos)) {
+    const typePriority = { cart: 0, sign: 1, exterior: 2, dish: 3, interior: 4 };
+    const sorted = [...restaurant.photos].sort((a, b) =>
+      (typePriority[a.type] ?? 9) - (typePriority[b.type] ?? 9)
+    );
+    sorted.forEach(p => {
+      if (photos.length < 5 && p.url !== restaurant.identification_photo_url) {
+        photos.push(p);
+      }
+    });
+  }
+
+  // No photos: render cuisine placeholder
+  if (photos.length === 0) {
+    const cuisineText = Array.isArray(restaurant.cuisine_types) && restaurant.cuisine_types.length
+      ? restaurant.cuisine_types.slice(0, 2).map(c => c.replace(/_/g, ' ')).join(' · ')
+      : 'Thai cuisine';
+    return `<div class="card__photo-placeholder">
+      <span class="card__cuisine-label">${escapeHTML(cuisineText)}</span>
+      ${openBadgeHTML}
+      ${overlaysHTML}
+    </div>`;
+  }
+
+  // Render strip — max 3 photos
+  const slides = photos.slice(0, 3).map(p =>
+    `<img class="card__photo-slide" src="${escapeHTML(p.url)}" alt="" loading="lazy" decoding="async">`
+  ).join('');
+
+  return `<div class="card__photo-strip">
+    ${slides}
+    ${openBadgeHTML}
+    ${overlaysHTML}
+  </div>`;
+}
 
 function escapeHTML(str) {
   if (!str) return '';
@@ -580,9 +573,8 @@ function cityLabel(city) {
 }
 
 function cardHTML(r) {
-  const openStatus   = isOpenNow(r.opening_hours);
-  const personal     = state.personalData.get(r.id) || {};
-  const primaryPhoto = Array.isArray(r.photos) ? (r.photos.find(p => p.is_primary) || r.photos[0]) : null;
+  const openStatus = isOpenNow(r.opening_hours);
+  const personal   = state.personalData.get(r.id) || {};
 
   const openClass = openStatus === 'open'   ? 'open-indicator--open'
                   : openStatus === 'closed' ? 'open-indicator--closed'
@@ -599,9 +591,16 @@ function cardHTML(r) {
     ? `<span class="visited-marker visited-marker--visited" aria-label="You've visited">✓ Visited</span>`
     : '';
 
-  const photoHTML = primaryPhoto
-    ? `<img src="${escapeHTML(primaryPhoto.url)}" alt="${escapeHTML(r.name_en || r.name_th)} photo" loading="lazy" decoding="async">`
+  // Build 2: Photo strip (MISSING-05)
+  const cityAbbrev = { bangkok: 'BKK', chiang_mai: 'CNX', koh_chang: 'KCH' };
+  const cityCode = r.city ? (cityAbbrev[r.city] || cityLabel(r.city)) : '';
+  const cityBadgeInStrip = cityCode ? `<span class="badge badge--city">${escapeHTML(cityCode)}</span>` : '';
+
+  const openBadgeHTML = openLabel
+    ? `<span class="open-indicator ${openClass}" aria-label="${openLabel}">${openLabel}</span>`
     : '';
+  const overlaysHTML = `${cityBadgeInStrip}${wishHTML}${visitedHTML}`;
+  const photoAreaHTML = photoStripHTML(r, openBadgeHTML, overlaysHTML);
 
   const cuisineTag = Array.isArray(r.cuisine_types) && r.cuisine_types.length
     ? `<span class="badge badge--cuisine">${escapeHTML(r.cuisine_types[0].replace(/_/g, ' '))}</span>` : '';
@@ -631,12 +630,7 @@ function cardHTML(r) {
 
   return `
 <article class="card" role="listitem" data-id="${r.id}" aria-label="${escapeHTML(r.name_en || r.name_th)}">
-  <div class="card__photo-strip${primaryPhoto ? '' : ' card__photo-strip--empty'}" aria-hidden="true">
-    ${photoHTML}
-    ${openLabel ? `<span class="open-indicator ${openClass}" aria-label="${openLabel}">${openLabel}</span>` : ''}
-    ${wishHTML}
-    ${visitedHTML}
-  </div>
+  ${photoAreaHTML}
   <div class="card__body">
     <h2 class="card__name-thai">${escapeHTML(r.name_th || r.name_en)}</h2>
     ${r.name_en && r.name_th ? `<p class="card__name-english">${escapeHTML(r.name_en)}</p>` : ''}
@@ -689,12 +683,10 @@ function renderPins(restaurants) {
     if (personal.is_wishlisted)       classes.push('map-pin--wishlisted');
     if (r.id === state.selectedId)    classes.push('map-pin--selected');
 
-    // Use tagline as pin label (tells you what the place IS), fall back to English name
     const fullName  = r.name_en || r.name_th || '';
     const rawLabel  = r.tagline || fullName;
     const pinLabel  = rawLabel.length > 22 ? rawLabel.slice(0, 21) + '…' : rawLabel;
 
-    // Status indicator: dot + label for open/closed, nothing for unknown
     const statusHTML = openStatus === 'open'
       ? `<span class="map-pin__dot"></span><span class="map-pin__status">Open</span>`
       : openStatus === 'closed'
@@ -781,8 +773,6 @@ function applyFilters() {
   renderList(state.filtered);
   buildFilterChips();
   if (state.activeView === 'map') renderPins(state.filtered);
-
-  // Build 2: Show GPS status notice when denied (MISSING-01)
   renderLocationNotice();
 }
 
@@ -808,7 +798,6 @@ function renderList(restaurants) {
 
 /* ============================================================
    ROUTER — hash-based navigation
-   #map (default), #list, #restaurant/{slug}
    ============================================================ */
 
 function initRouter() {
@@ -822,7 +811,6 @@ function handleRoute(hash) {
   if (hash.startsWith('#restaurant/')) {
     const slug = decodeURIComponent(hash.slice(12));
     if (state.restaurants.length === 0) {
-      // Data not yet loaded — store pending and handle after fetch
       state.pendingRoute = hash;
       return;
     }
@@ -837,7 +825,6 @@ function handleRoute(hash) {
     hideDetailPage();
     applyView('list');
   } else {
-    // '#map', '' or anything else
     hideDetailPage();
     applyView('map');
   }
@@ -888,14 +875,12 @@ function renderDetailPage(r) {
   const personal   = state.personalData.get(r.id) || {};
   const openStatus = isOpenNow(r.opening_hours);
 
-  // Primary photo
   const photos       = Array.isArray(r.photos) ? r.photos : [];
   const primaryPhoto = photos.find(p => p.is_primary) || photos[0];
   const photosHTML   = primaryPhoto
     ? `<div class="detail-photo"><img src="${escapeHTML(primaryPhoto.url)}" alt="${escapeHTML(r.name_en || r.name_th)} photo" loading="eager" decoding="async"></div>`
     : '';
 
-  // Status
   const openClass = openStatus === 'open'   ? 'open-indicator--open'
                   : openStatus === 'closed' ? 'open-indicator--closed'
                   :                           'open-indicator--unknown';
@@ -903,7 +888,6 @@ function renderDetailPage(r) {
                   : openStatus === 'closed' ? 'Closed'
                   :                           'Hours unknown';
 
-  // Hours rows
   const dayNames  = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
   const hoursRows = r.opening_hours
     ? Object.entries(dayNames).map(([key, label]) =>
@@ -914,7 +898,6 @@ function renderDetailPage(r) {
   const cuisineDisplay = Array.isArray(r.cuisine_types)
     ? r.cuisine_types.map(c => c.replace(/_/g, ' ')).join(', ') : '';
 
-  // Build 2: Distance display in detail view (MISSING-02)
   const detailPrecision = r.location_precision || 'no_location';
   let detailDistance = '';
   if (detailPrecision === 'area_only' && r.area) {
@@ -923,9 +906,7 @@ function renderDetailPage(r) {
     detailDistance = `<span class="precision-badge">Find locally</span>`;
   } else {
     const fd = formatDistance(r._distanceMetres, detailPrecision);
-    if (fd) {
-      detailDistance = `<span class="precision-badge">${fd}</span>`;
-    }
+    if (fd) detailDistance = `<span class="precision-badge">${fd}</span>`;
   }
 
   dom.detailBody.innerHTML = `
@@ -1015,7 +996,6 @@ function formatDayHours(daySlots) {
 /* ── Event listeners ─────────────────────────────────────── */
 
 function attachEventListeners() {
-  // Card tap → navigate to detail page
   dom.cardList.addEventListener('click', (e) => {
     const wbtn = e.target.closest('[data-action="wishlist"]');
     if (wbtn && wbtn.closest('.card-list')) {
@@ -1027,7 +1007,6 @@ function attachEventListeners() {
     if (card) openDetail(card.dataset.id);
   });
 
-  // Filter chips
   dom.filterChips.addEventListener('click', (e) => {
     const chip = e.target.closest('.filter-chip');
     if (!chip) return;
@@ -1043,14 +1022,10 @@ function attachEventListeners() {
     applyFilters();
   });
 
-  // Nav buttons push to hash; router handles the rest
   dom.navMap.addEventListener('click',  () => { window.location.hash = '#map'; });
   dom.navList.addEventListener('click', () => { window.location.hash = '#list'; });
-
-  // Detail back button
   dom.detailBack.addEventListener('click', () => history.back());
 
-  // Personal actions on detail page
   dom.detailBody.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-action][data-id]');
     if (!btn) return;
@@ -1077,20 +1052,17 @@ async function handlePersonalToggle(id, action) {
   await upsertPersonalData(id, updates);
   showToast(toast);
 
-  // Refresh detail page if currently showing this restaurant
   if (state.selectedId === id && dom.viewDetail.classList.contains('view-detail--active')) {
     const r = state.restaurants.find(r => r.id === id);
     if (r) renderDetailPage(r);
   }
 
-  // Re-render card in list
   const cardEl = dom.cardList.querySelector(`[data-id="${id}"]`);
   if (cardEl) {
     const r = state.restaurants.find(r => r.id === id);
     if (r) cardEl.outerHTML = cardHTML(r);
   }
 
-  // Refresh map pin
   if (state.activeView === 'map') {
     const pin = state.mapPins.get(id);
     if (pin && state.map) {
@@ -1108,21 +1080,19 @@ async function init() {
   state.personalId = getOrCreatePersonalId();
   attachEventListeners();
   initKeyboardHandler();
-  initMap();      // Map is default — init early so tiles start loading
-  initRouter();   // Set up hashchange + handle initial hash
+  initMap();
+  initRouter();
 
   await Promise.allSettled([
     loadPersonalData(),
     fetchRestaurants(),
   ]);
 
-  // Render pins now that data is ready
   if (state.map && state.activeView === 'map') {
     state.map.invalidateSize();
     renderPins(state.filtered);
   }
 
-  // Handle any route that was pending (restaurant detail before data loaded)
   if (state.pendingRoute) {
     const pending = state.pendingRoute;
     state.pendingRoute = null;
