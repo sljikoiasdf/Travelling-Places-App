@@ -423,7 +423,7 @@ function renderListView() {
         ? formatDistance(haversineDistance(state.userLat, state.userLng, r.latitude, r.longitude))
         : 'N/A';
       html += `
-        <div class="restaurant-card" onclick="showDetailView({id: '${r.id}', name: '${escapeHtml(r.name)}', rating: ${r.rating || 0}, cuisines: '${r.cuisines ? r.cuisines.join(', ') : ''}', latitude: ${r.latitude}, longitude: ${r.longitude}, phone: '${r.phone || ''}', address: '${escapeHtml(r.address || '')}', description: '${escapeHtml(r.description || '')}', review_links: ${JSON.stringify(r.review_links || [])}})">
+        <div class="restaurant-card" onclick="showDetailView({id: '${r.id}', name: '${escapeHtml(r.name)}', rating: ${r.rating || 0}, cuisines: '${r.cuisines ? r.cuisines.join(', ') : ''}', latitude: ${r.latitude}, longitude: ${r.longitude}, phone: '${r.phone || ''}', address: '${escapeHtml(r.address || '')}', description: '${escapeHtml(r.description || '')}', review_links: ${JSON.stringify(r.review_links || [])}})'>
           <h3>${escapeHtml(r.name)}</h3>
           <p>Rating: ${formatRating(r.rating)}/5</p>
           <p>Distance: ${distance}</p>
