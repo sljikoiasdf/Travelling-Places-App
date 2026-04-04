@@ -49,6 +49,9 @@ const state = {
   locationStatus: 'requesting', // 'requesting' | 'granted' | 'denied' | 'unavailable'
   sortOrder:      'rating',     // 'nearest' | 'rating' — 'nearest' only when GPS granted
   nearMeRadiusM:  2000,         // Near me filter radius in metres (MISSING-16)
+  // ── Build 2: Search & view mode (MISSING-07, B2_16) ─────
+  searchQuery:    '',           // Free-text search query
+  viewMode:       'all',        // 'all' | 'wishlist' | 'visited'
 };
 
 /* ── DOM references ────────────────────────────────────────── */
@@ -71,6 +74,8 @@ const dom = {
   navMap:           document.getElementById('nav-map'),
   navList:          document.getElementById('nav-list'),
   toastContainer:   document.getElementById('toast-container'),
+  mapContainer:     document.getElementById('map'),
+  viewToggle:       document.getElementById('view-toggle'),
   navChoiceOverlay: document.getElementById('nav-choice-overlay'),
   navChoiceSheet:   document.getElementById('nav-choice-sheet'),
   sortSheetOverlay: document.getElementById('sort-sheet-overlay'),
