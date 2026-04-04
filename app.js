@@ -76,6 +76,7 @@ const dom = {
   navChoiceSheet:    document.getElementById('nav-choice-sheet'),
   sortSheetOverlay:  document.getElementById('sort-sheet-overlay'),
   sortSheet:         document.getElementById('sort-sheet'),
+  pullIndicator:     document.getElementById('pull-indicator'),
 };
 
 /* ============================================================
@@ -659,35 +660,6 @@ function showNavChoiceSheet(restaurant) {
   }
 }
 
-/* ── Contact row HTML builder ────────────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-12
-// Phone uses tel: URI — no window.open(). Works offline (native iOS call).
-// Website link: HTTPS, target="_blank", rel="noopener noreferrer"
-// Omitted entirely if both phone and website are null.
-// Note: schema has 'phone' and 'website' columns (no wongnai_url — only wongnai_rating number)
-
-function contactRowHTML(restaurant) {
-  const items = [];
-
-  if (restaurant.phone) {
-    // Format Thai phone number: 0x-xxx-xxxx or 0xx-xxx-xxxx
-    const raw = restaurant.phone.replace(/\s+/g, '');
-    let display = raw;
-    const thaiMatch = raw.replace(/^\+66/, '0').match(/^(0\d{1,2})(\d{3,4})(\d{4})$/);
-    if (thaiMatch) display = `${thaiMatch[1]}-${thaiMatch[2]}-${thaiMatch[3]}`;
-
-    items.push(`<a class="contact-link contact-link--phone" href="tel:${encodeURI(raw)}">📞 ${escapeHTML(display)}</a>`);
-  }
-
-  if (restaurant.website) {
-    items.push(`<a class="contact-link" href="${escapeHTML(restaurant.website)}" target="_blank" rel="noopener noreferrer">Website ↗</a>`);
-  }
-
-  if (items.length === 0) return '';
-
-  return `<div class="contact-row">${items.join('')}</div>`;
-}
-
 /* ============================================================
    KEYBOARD HANDLER
    ============================================================ */
@@ -817,6 +789,35 @@ function attachPersonalNotesListener(restaurantId) {
       }
     }, 1000);
   });
+}
+
+/* ── Contact row HTML builder ────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-12
+// Phone uses tel: URI — no window.open(). Works offline (native iOS call).
+// Website link: HTTPS, target="_blank", rel="noopener noreferrer"
+// Omitted entirely if both phone and website are null.
+// Note: schema has 'phone' and 'website' columns (no wongnai_url column — only wongnai_rating number)
+
+function contactRowHTML(restaurant) {
+  const items = [];
+
+  if (restaurant.phone) {
+    // Format Thai phone number: 0x-xxx-xxxx or 0xx-xxx-xxxx
+    const raw = restaurant.phone.replace(/\s+/g, '');
+    let display = raw;
+    const thaiMatch = raw.replace(/^\+66/, '0').match(/^(0\d{1,2})(\d{3,4})(\d{4})$/);
+    if (thaiMatch) display = `${thaiMatch[1]}-${thaiMatch[2]}-${thaiMatch[3]}`;
+
+    items.push(`<a class="contact-link contact-link--phone" href="tel:${encodeURI(raw)}">📞 ${escapeHTML(display)}</a>`);
+  }
+
+  if (restaurant.website) {
+    items.push(`<a class="contact-link" href="${escapeHTML(restaurant.website)}" target="_blank" rel="noopener noreferrer">Website ↗</a>`);
+  }
+
+  if (items.length === 0) return '';
+
+  return `<div class="contact-row">${items.join('')}</div>`;
 }
 
 /* ── Photo strip builder ────────────────────────────────── */
@@ -1542,6 +1543,60 @@ function attachEventListeners() {
     });
     applyFiltersAndSearch();
   });
+
+  /* ── Pull-to-refresh ─────────────────────────────────────── */
+  // Spec: docs/design/MISSING_FEATURES.md — MISSING-13
+  // Detects downward pull when list is scrolled to top.
+  // Pull threshold: 60px. Calls refreshFromNetwork() on release.
+  // passive:true on touchstart/touchmove — required for iOS scroll performance.
+  (function initPullToRefresh() {
+    const listContainer = dom.cardList?.parentElement; // div.view__content
+    if (!listContainer) return;
+
+    let startY = 0;
+    let pulling = false;
+    let refreshing = false;
+    const THRESHOLD = 60;
+
+    listContainer.addEventListener('touchstart', (e) => {
+      if (listContainer.scrollTop === 0) {
+        startY = e.touches[0].clientY;
+        pulling = true;
+      }
+    }, { passive: true });
+
+    listContainer.addEventListener('touchmove', (e) => {
+      if (!pulling || refreshing) return;
+      const currentY = e.touches[0].clientY;
+      const delta = currentY - startY;
+      if (delta > 10 && listContainer.scrollTop === 0) {
+        const progress = Math.min(delta, THRESHOLD);
+        if (dom.pullIndicator) {
+          dom.pullIndicator.classList.toggle('pull-indicator--active', progress >= THRESHOLD * 0.5);
+        }
+      }
+    }, { passive: true });
+
+    listContainer.addEventListener('touchend', async () => {
+      if (!pulling) return;
+      pulling = false;
+
+      if (!refreshing && dom.pullIndicator?.classList.contains('pull-indicator--active')) {
+        refreshing = true;
+        try {
+          await refreshFromNetwork();
+          showToast('Refreshed', 'success');
+        } catch (_) {
+          // refreshFromNetwork handles its own error toast
+        } finally {
+          refreshing = false;
+          dom.pullIndicator?.classList.remove('pull-indicator--active');
+        }
+      } else {
+        dom.pullIndicator?.classList.remove('pull-indicator--active');
+      }
+    });
+  })();
 }
 
 async function handlePersonalToggle(id, action) {
