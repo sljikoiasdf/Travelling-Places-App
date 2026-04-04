@@ -499,7 +499,7 @@ function resolveNavDestination(restaurant) {
       lat: restaurant.lat,
       lng: restaurant.lng,
       isApproximate: p === 'approximate',
-      label: restaurant.name_en || restaurant.name_th
+      label: p === 'approximate' ? 'Location approximate' : null
     };
   }
 
@@ -508,11 +508,460 @@ function resolveNavDestination(restaurant) {
       lat: restaurant.landmark_latitude,
       lng: restaurant.landmark_longitude,
       isApproximate: true,
-      label: restaurant.nearby_landmark_en || restaurant.name_en || restaurant.name_th
+      label: 'Navigate to nearby landmark'
     };
   }
 
-  return null;
+  return null; // no navigable destination
+}
+
+/* ── Location block HTML builder ─────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-03
+// Renders cart-finder-box, landmark note, area/city, and directions button
+
+function locationBlockHTML(restaurant) {
+  const p    = restaurant.location_precision;
+  const dest = resolveNavDestination(restaurant);
+  let html   = '';
+
+  // Cart / no-location: show finder box prominently
+  if (!p || p === 'no_location' || p === 'area_only') {
+    if (restaurant.cart_identifier || restaurant.location_notes) {
+      html += `<div class="cart-finder-box">
+        <div class="cart-finder-box__label">How to find it</div>
+        ${restaurant.cart_identifier ? `<div class="cart-finder-box__text">${escapeHTML(restaurant.cart_identifier)}</div>` : ''}
+        ${restaurant.location_notes ? `<div class="cart-finder-box__text">${escapeHTML(restaurant.location_notes)}</div>` : ''}
+      </div>`;
+    }
+  }
+
+  // Nearby landmark note
+  if (restaurant.nearby_landmark_en) {
+    html += `<p class="landmark-note">Near: ${escapeHTML(restaurant.nearby_landmark_en)}</p>`;
+  }
+
+  // Area + city
+  const areaCity = [
+    restaurant.area ? restaurant.area.replace(/_/g, ' ') : null,
+    restaurant.city ? restaurant.city.replace(/_/g, ' ') : null
+  ].filter(Boolean).join(', ');
+  if (areaCity) html += `<p class="detail__area">${escapeHTML(areaCity)}</p>`;
+
+  // Directions button — precision-aware
+  if (dest) {
+    const navUrl = `https://maps.google.com/maps?q=${encodeURIComponent(dest.lat)},${encodeURIComponent(dest.lng)}(${encodeURIComponent(restaurant.name_en || restaurant.name_th || 'Restaurant')})`;
+    const approxBadge = dest.isApproximate && dest.label
+      ? `<span class="precision-badge">${escapeHTML(dest.label)}</span>`
+      : '';
+    html += `<div class="detail__directions-area">
+      ${approxBadge}
+      <button class="maps-btn" data-action="directions" data-restaurant-id="${restaurant.id}" aria-label="Get directions to ${escapeHTML(restaurant.name_en || restaurant.name_th || 'restaurant')}">Get Directions</button>
+    </div>`;
+  } else {
+    html += `<div class="detail__directions-area">
+      <button class="maps-btn maps-btn--disabled" data-action="directions" data-restaurant-id="${restaurant.id}" aria-label="Search for ${escapeHTML(restaurant.name_en || restaurant.name_th || 'restaurant')} on Maps">Find on Maps</button>
+    </div>`;
+  }
+
+  return html;
+}
+
+function mapsUrl(restaurant) {
+  if (restaurant.lat && restaurant.lng) {
+    const lat  = encodeURIComponent(restaurant.lat);
+    const lng  = encodeURIComponent(restaurant.lng);
+    const name = encodeURIComponent(restaurant.name_en || restaurant.name_th || 'Restaurant');
+    return `https://maps.google.com/maps?q=${lat},${lng}(${name})`;
+  }
+  const query = encodeURIComponent(
+    [restaurant.name_en, restaurant.city, 'Thailand'].filter(Boolean).join(' ')
+  );
+  return `https://maps.google.com/maps?q=${query}`;
+}
+
+/* ── Navigation URL builder ─────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-04, MISSING-17
+// ARCHITECTURE.md Section 3.1 — URL formats
+// Returns: { apple, google, streetView } — all HTTPS except Apple Maps maps:// scheme
+// Apple Maps: maps:// scheme in <a href> — Safari hands off to Maps app natively
+// Google Maps: HTTPS Universal Link — works whether or not Google Maps is installed
+// Street View: HTTPS — only for exact precision coordinates
+// NEVER call window.open() — use <a href> anchors only
+
+function navUrls(restaurant) {
+  const dest = resolveNavDestination(restaurant);
+  let apple = null, google = null, streetView = null;
+
+  if (dest && dest.lat && dest.lng) {
+    const lat = dest.lat;
+    const lng = dest.lng;
+    apple  = `maps://maps.apple.com/?daddr=${lat},${lng}&dirflg=w`;
+    google = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=walking`;
+    if (restaurant.location_precision === 'exact') {
+      streetView = `https://maps.google.com/?layer=c&cbll=${lat},${lng}`;
+    }
+  } else {
+    const name = encodeURIComponent(restaurant.name_th || restaurant.name_en || '');
+    apple  = `maps://maps.apple.com/?q=${name}`;
+    google = `https://www.google.com/maps/search/?api=1&query=${name}`;
+  }
+
+  return { apple, google, streetView };
+}
+
+/* ── Navigation choice sheet ────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-04, MISSING-17
+// Shows bottom sheet with Apple Maps + Google Maps + optional Street View
+
+function showNavChoiceSheet(restaurant) {
+  const urls = navUrls(restaurant);
+  const dest = resolveNavDestination(restaurant);
+  const approxLabel = dest?.isApproximate
+    ? `<p class="nav-choice-sheet__title">${escapeHTML(dest.label || 'Location approximate')}</p>` : '';
+
+  const sheetContent = `
+    ${approxLabel}
+    <p class="nav-choice-sheet__title">Open with</p>
+    <a href="${urls.apple}" class="nav-choice-btn">
+      <span>🗺</span> Apple Maps
+    </a>
+    <a href="${urls.google}" class="nav-choice-btn" target="_blank" rel="noopener">
+      <span>📍</span> Google Maps
+    </a>
+    ${urls.streetView ? `<a href="${urls.streetView}" class="street-view-link" target="_blank" rel="noopener">📷 Street View</a>` : ''}
+    <button class="nav-choice-cancel" id="nav-choice-cancel">Cancel</button>
+  `;
+
+  const overlay = dom.navChoiceOverlay || document.getElementById('nav-choice-overlay');
+  const sheet   = dom.navChoiceSheet   || document.getElementById('nav-choice-sheet');
+  if (!overlay || !sheet) {
+    // Fallback if overlay not present
+    window.location.href = urls.apple;
+    return;
+  }
+
+  sheet.innerHTML = sheetContent;
+  overlay.classList.add('nav-choice-overlay--visible');
+
+  function dismiss(e) {
+    if (e.target === overlay) {
+      overlay.classList.remove('nav-choice-overlay--visible');
+      overlay.removeEventListener('click', dismiss);
+    }
+  }
+  overlay.addEventListener('click', dismiss);
+
+  const cancelBtn = document.getElementById('nav-choice-cancel');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => {
+      overlay.classList.remove('nav-choice-overlay--visible');
+    }, { once: true });
+  }
+}
+
+/* ============================================================
+   KEYBOARD HANDLER
+   ============================================================ */
+
+function initKeyboardHandler() {
+  if (!window.visualViewport) return;
+
+  let keyboardOpen = false;
+
+  window.visualViewport.addEventListener('resize', () => {
+    const viewportHeight = window.visualViewport.height;
+    const windowHeight   = window.innerHeight;
+    const keyboardHeight = windowHeight - viewportHeight;
+
+    if (keyboardHeight > 150) {
+      if (!keyboardOpen) {
+        keyboardOpen = true;
+        document.documentElement.style.setProperty('--keyboard-height', `${keyboardHeight}px`);
+        document.body.classList.add('keyboard-open');
+      }
+    } else {
+      if (keyboardOpen) {
+        keyboardOpen = false;
+        document.documentElement.style.setProperty('--keyboard-height', '0px');
+        document.body.classList.remove('keyboard-open');
+      }
+    }
+  });
+
+  window.visualViewport.addEventListener('scroll', () => {
+    if (window.visualViewport.offsetTop > 0) {
+      window.scrollTo(0, window.visualViewport.offsetTop);
+    }
+  });
+}
+
+/* ============================================================
+   CARD HTML
+   ============================================================ */
+
+/* ── Dishes preview (card) ──────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-06
+// Compact one-line preview: "Must order: ข้าวมันไก่ · ไก่ทอด"
+// Signature dishes shown first. Max 2 dish names. Omitted if no dishes.
+
+function dishesPreviewHTML(dishes) {
+  if (!dishes || !Array.isArray(dishes) || dishes.length === 0) return '';
+  const sorted = [...dishes].sort((a, b) => (b.is_signature ? 1 : 0) - (a.is_signature ? 1 : 0));
+  const shown = sorted.slice(0, 2).map(d => d.name_th || d.name_en || '').filter(Boolean);
+  if (shown.length === 0) return '';
+  return `<div class="card__dishes-preview">
+    <span class="card__dishes-label">Must order:</span> ${escapeHTML(shown.join(' · '))}
+  </div>`;
+}
+
+/* ── Dishes detail (full) ────────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-06
+// Full list of dishes with name_th, name_en, price_approx, notes, is_signature badge.
+// Section heading: "Known for". Omitted entirely if no dishes.
+
+function dishesDetailHTML(dishes) {
+  if (!dishes || !Array.isArray(dishes) || dishes.length === 0) return '';
+  const items = dishes.map(d => `
+    <div class="dish-item ${d.is_signature ? 'dish-item--signature' : ''}">
+      ${d.name_th ? `<span class="dish-item__name-th">${escapeHTML(d.name_th)}</span>` : ''}
+      ${d.name_en ? `<span class="dish-item__name-en">${escapeHTML(d.name_en)}</span>` : ''}
+      ${d.price_approx ? `<span class="dish-item__price">฿${escapeHTML(String(d.price_approx))}</span>` : ''}
+      ${d.notes ? `<p class="dish-item__notes">${escapeHTML(d.notes)}</p>` : ''}
+      ${d.is_signature ? `<span class="dish-item__badge">Signature</span>` : ''}
+    </div>
+  `).join('');
+  return `<section class="dishes-section">
+    <h3 class="dishes-section__heading">Known for</h3>
+    ${items}
+  </section>`;
+}
+
+/* ── Star rating HTML builder ────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-09
+// interactive=false: read-only display on cards — returns '' if no rating
+// interactive=true: 5 tappable buttons on detail view — always shown
+// Tapping same star as current rating clears to null
+
+function starRatingHTML(rating, restaurantId, interactive = false) {
+  if (!interactive && (!rating || rating === 0)) return '';
+
+  const stars = [1, 2, 3, 4, 5].map(n => {
+    const filled = rating && n <= rating;
+    if (interactive) {
+      return `<button class="star-btn${filled ? ' star-btn--filled' : ''}" data-action="rate" data-rating="${n}" data-restaurant-id="${restaurantId}" aria-label="${n} star${n > 1 ? 's' : ''}" aria-pressed="${filled ? 'true' : 'false'}">★</button>`;
+    }
+    return `<span class="star${filled ? ' star--filled' : ''}">★</span>`;
+  }).join('');
+
+  return `<div class="star-rating${interactive ? ' star-rating--interactive' : ''}" role="${interactive ? 'group' : 'img'}" aria-label="Rating: ${rating || 0} out of 5">${stars}</div>`;
+}
+
+/* ── Photo strip builder ────────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-05
+// Priority: identification_photo_url → cart/sign → exterior → dish/interior
+// Maximum 3 photos shown. Uses scroll-snap for swipe behaviour.
+// openBadgeHTML + overlaysHTML (city badge, wishlist, visited) are absolutely
+// positioned within the strip.
+
+function photoStripHTML(restaurant, openBadgeHTML, overlaysHTML) {
+  const photos = [];
+
+  // Priority 1: Identification photo
+  if (restaurant.identification_photo_url) {
+    photos.push({
+      url: restaurant.identification_photo_url,
+      alt: 'Restaurant entrance',
+      type: 'identification'
+    });
+  }
+
+  // Priority 2–4: Numbered photos (cart, exterior, dish/interior)
+  if (restaurant.photos && Array.isArray(restaurant.photos)) {
+    restaurant.photos.forEach(p => {
+      if (photos.length < 3) {
+        photos.push({
+          url: p.url,
+          alt: p.caption || 'Restaurant photo',
+          type: p.type || 'other'
+        });
+      }
+    });
+  }
+
+  // No photos — show empty state
+  if (photos.length === 0) {
+    return `<div class="photo-strip photo-strip--empty">
+      <div class="photo-strip__placeholder">📷</div>
+    </div>`;
+  }
+
+  const photoHTML = photos.map((p, i) => `
+    <div class="photo-strip__item">
+      <img src="${escapeHTML(p.url)}" alt="${escapeHTML(p.alt)}" loading="lazy" />
+    </div>
+  `).join('');
+
+  return `<div class="photo-strip">
+    ${openBadgeHTML}
+    ${overlaysHTML}
+    ${photoHTML}
+  </div>`;
+}
+
+/* ── Card HTML builder ────────────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-05 (photo strip),
+//       MISSING-06 (dishes), MISSING-09 (star rating),
+//       MISSING-08 (meal periods), MISSING-02 (distance)
+// Returns one <div class="card"> with: photo, title, distance, meal periods,
+// dishes preview, price range, wishlist / visited buttons, star rating.
+
+function cardHTML(restaurant) {
+  const personal = state.personalData.get(restaurant.id) || {};
+  const distance = formatDistance(restaurant._distanceMetres, restaurant.location_precision);
+  const openStatus = isOpenNow(restaurant.opening_hours);
+
+  // Open status badge
+  const openBadgeHTML = openStatus === 'open'
+    ? `<span class="badge badge--open">Open now</span>`
+    : openStatus === 'closed'
+      ? `<span class="badge badge--closed">Closed</span>`
+      : '';
+
+  // Wishlist + Visited overlay
+  const overlaysHTML = `
+    <div class="card__overlays">
+      <button class="card__wishlist-btn${personal.is_wishlisted ? ' card__wishlist-btn--active' : ''}" data-action="toggle-wishlist" data-restaurant-id="${restaurant.id}" aria-label="${personal.is_wishlisted ? 'Remove from wishlist' : 'Add to wishlist'}">♡</button>
+      <button class="card__visited-btn${personal.is_visited ? ' card__visited-btn--active' : ''}" data-action="toggle-visited" data-restaurant-id="${restaurant.id}" aria-label="${personal.is_visited ? 'Mark as not visited' : 'Mark as visited'}">✓</button>
+    </div>
+  `;
+
+  const photoHTML = photoStripHTML(restaurant, openBadgeHTML, overlaysHTML);
+  const dishesHTML = dishesPreviewHTML(restaurant.dishes);
+  const ratingHTML = starRatingHTML(personal.my_rating, restaurant.id, false);
+
+  // Meal period icons (breakfast, lunch, dinner, late_night)
+  const mealPeriods = [];
+  if (isOpenDuringPeriod('breakfast', restaurant.opening_hours)) mealPeriods.push('🥐');
+  if (isOpenDuringPeriod('lunch', restaurant.opening_hours)) mealPeriods.push('🍜');
+  if (isOpenDuringPeriod('dinner', restaurant.opening_hours)) mealPeriods.push('🍽');
+  if (isOpenDuringPeriod('late_night', restaurant.opening_hours)) mealPeriods.push('🌙');
+  const mealPeriodsHTML = mealPeriods.length > 0
+    ? `<div class="card__meal-periods">${mealPeriods.join(' ')}</div>`
+    : '';
+
+  // Distance line
+  const distanceHTML = distance
+    ? `<div class="card__distance">${escapeHTML(distance)}</div>`
+    : '';
+
+  // Price range
+  const priceRange = restaurant.price_range
+    ? `<span class="card__price-range">${escapeHTML(restaurant.price_range)}</span>`
+    : '';
+
+  const cuisinesHTML = restaurant.cuisine_types && restaurant.cuisine_types.length > 0
+    ? `<span class="card__cuisines">${escapeHTML(restaurant.cuisine_types.slice(0, 2).join(', '))}</span>`
+    : '';
+
+  return `<div class="card" data-restaurant-id="${restaurant.id}">
+    ${photoHTML}
+    <div class="card__content">
+      <h2 class="card__title">${escapeHTML(restaurant.name_en || restaurant.name_th)}</h2>
+      ${distanceHTML}
+      ${mealPeriodsHTML}
+      <div class="card__meta">
+        ${priceRange}
+        ${cuisinesHTML}
+      </div>
+      ${dishesHTML}
+      ${ratingHTML}
+    </div>
+  </div>`;
+}
+
+/* ============================================================
+   DETAIL VIEW HTML
+   ============================================================ */
+
+function detailViewHTML(restaurant) {
+  const personal = state.personalData.get(restaurant.id) || {};
+  const openStatus = isOpenNow(restaurant.opening_hours);
+
+  const openBadgeHTML = openStatus === 'open'
+    ? `<div class="badge badge--open">Open now</div>`
+    : openStatus === 'closed'
+      ? `<div class="badge badge--closed">Closed</div>`
+      : '';
+
+  // Photo strip with wishlist / visited overlay
+  const overlaysHTML = `
+    <div class="detail__overlays">
+      <button class="detail__wishlist-btn${personal.is_wishlisted ? ' detail__wishlist-btn--active' : ''}" data-action="toggle-wishlist" data-restaurant-id="${restaurant.id}" aria-label="${personal.is_wishlisted ? 'Remove from wishlist' : 'Add to wishlist'}">♡</button>
+      <button class="detail__visited-btn${personal.is_visited ? ' detail__visited-btn--active' : ''}" data-action="toggle-visited" data-restaurant-id="${restaurant.id}" aria-label="${personal.is_visited ? 'Mark as not visited' : 'Mark as visited'}">✓</button>
+    </div>
+  `;
+  const photoHTML = photoStripHTML(restaurant, openBadgeHTML, overlaysHTML);
+
+  // Contact info
+  let contactHTML = '';
+  if (restaurant.phone || restaurant.website) {
+    contactHTML = `<section class="contact-section">
+      ${restaurant.phone ? `<a href="tel:${encodeURIComponent(restaurant.phone)}" class="contact-link phone-link">📞 ${escapeHTML(restaurant.phone)}</a>` : ''}
+      ${restaurant.website ? `<a href="${escapeHTML(restaurant.website)}" class="contact-link website-link" target="_blank" rel="noopener">🌐 Website</a>` : ''}
+    </section>`;
+  }
+
+  // Michelin badge
+  let michelinHTML = '';
+  if (restaurant.michelin_stars && restaurant.michelin_stars > 0) {
+    michelinHTML = `<div class="michelin-badge">⭐ ${restaurant.michelin_stars}-star Michelin</div>`;
+  } else if (restaurant.michelin_bib) {
+    michelinHTML = `<div class="michelin-badge">Bib Gourmand</div>`;
+  }
+
+  // Attributes (halal, vegetarian)
+  const attrsHTML = [
+    restaurant.is_halal ? '<span class="attr-badge attr-badge--halal">Halal</span>' : '',
+    restaurant.is_vegetarian_friendly ? '<span class="attr-badge attr-badge--veg">Vegetarian-friendly</span>' : ''
+  ].filter(Boolean).join('');
+  const attributesHTML = attrsHTML
+    ? `<div class="detail__attributes">${attrsHTML}</div>`
+    : '';
+
+  // Meal periods
+  const mealPeriods = [];
+  if (isOpenDuringPeriod('breakfast', restaurant.opening_hours)) mealPeriods.push('🥐 Breakfast');
+  if (isOpenDuringPeriod('lunch', restaurant.opening_hours)) mealPeriods.push('🍜 Lunch');
+  if (isOpenDuringPeriod('dinner', restaurant.opening_hours)) mealPeriods.push('🍽 Dinner');
+  if (isOpenDuringPeriod('late_night', restaurant.opening_hours)) mealPeriods.push('🌙 Late night');
+  const mealPeriodsHTML = mealPeriods.length > 0
+    ? `<div class="detail__meal-periods"><strong>Available:</strong> ${escapeHTML(mealPeriods.join(' · '))}</div>`
+    : '';
+
+  // Star rating (interactive)
+  const ratingHTML = starRatingHTML(personal.my_rating, restaurant.id, true);
+
+  // Dishes
+  const dishesHTML = dishesDetailHTML(restaurant.dishes);
+
+  // Location block (directions)
+  const locationHTML = locationBlockHTML(restaurant);
+
+  return `
+    ${photoHTML}
+    <div class="detail__content">
+      <h1 class="detail__title">${escapeHTML(restaurant.name_en || restaurant.name_th)}</h1>
+      ${openBadgeHTML}
+      ${michelinHTML}
+      ${attributesHTML}
+      ${mealPeriodsHTML}
+      <div class="detail__tagline">${escapeHTML(restaurant.tagline || '')}</div>
+      ${ratingHTML}
+      ${contactHTML}
+      ${locationHTML}
+      ${dishesHTML}
+    </div>
+  `;
 }
 
 /* ============================================================
@@ -520,527 +969,247 @@ function resolveNavDestination(restaurant) {
    ============================================================ */
 
 function applyFiltersAndSearch() {
-  let results = state.restaurants;
+  // Filter by view mode (all / wishlist / visited)
+  let items = state.restaurants;
 
-  // Apply period filter
-  if (state.activeFilters.period) {
-    results = results.filter(r => isOpenDuringPeriod(state.activeFilters.period, r.opening_hours));
-  }
-
-  // Apply other filters
-  if (state.activeFilters.cuisineType) {
-    results = results.filter(r => r.cuisine_types && r.cuisine_types.includes(state.activeFilters.cuisineType));
-  }
-
-  if (state.activeFilters.isHalal) {
-    results = results.filter(r => r.is_halal === true);
-  }
-
-  if (state.activeFilters.isVegetarianFriendly) {
-    results = results.filter(r => r.is_vegetarian_friendly === true);
-  }
-
-  if (state.activeFilters.openNow) {
-    results = results.filter(r => isOpenNow(r.opening_hours) === 'open');
-  }
-
-  if (state.activeFilters.michelin) {
-    results = results.filter(r =>
-      (state.activeFilters.michelin === 'any' && (r.michelin_stars || r.michelin_bib)) ||
-      (state.activeFilters.michelin === 'star' && r.michelin_stars) ||
-      (state.activeFilters.michelin === 'bib' && r.michelin_bib)
-    );
-  }
-
-  // Apply search query
-  if (state.searchQuery) {
-    const query = state.searchQuery.toLowerCase();
-    results = results.filter(r =>
-      (r.name_th && r.name_th.toLowerCase().includes(query)) ||
-      (r.name_en && r.name_en.toLowerCase().includes(query)) ||
-      (r.area && r.area.toLowerCase().includes(query)) ||
-      (r.city && r.city.toLowerCase().includes(query)) ||
-      (r.tagline && r.tagline.toLowerCase().includes(query)) ||
-      (r.cuisine_types && r.cuisine_types.some(c => c.toLowerCase().includes(query)))
-    );
-  }
-
-  // Apply view mode
   if (state.viewMode === 'wishlist') {
-    results = results.filter(r => {
-      const pd = state.personalData.get(r.id);
-      return pd && pd.is_wishlisted;
+    items = items.filter(r => {
+      const personal = state.personalData.get(r.id);
+      return personal && personal.is_wishlisted;
     });
   } else if (state.viewMode === 'visited') {
-    results = results.filter(r => {
-      const pd = state.personalData.get(r.id);
-      return pd && pd.is_visited;
+    items = items.filter(r => {
+      const personal = state.personalData.get(r.id);
+      return personal && personal.is_visited;
     });
   }
 
-  // Apply sort order
+  // Filter by active filters (cuisine, price range, halal, vegetarian, michelin)
+  items = items.filter(r => {
+    for (const [filterKey, filterValue] of Object.entries(state.activeFilters)) {
+      if (!filterValue) continue; // Filter is not active
+
+      if (filterKey === 'cuisine') {
+        if (!r.cuisine_types || !r.cuisine_types.includes(filterValue)) return false;
+      } else if (filterKey === 'price_range') {
+        if (r.price_range !== filterValue) return false;
+      } else if (filterKey === 'halal') {
+        if (!r.is_halal) return false;
+      } else if (filterKey === 'vegetarian') {
+        if (!r.is_vegetarian_friendly) return false;
+      } else if (filterKey === 'michelin') {
+        if (filterValue === 'michelin_stars') {
+          if (!r.michelin_stars || r.michelin_stars < 1) return false;
+        } else if (filterValue === 'bib_gourmand') {
+          if (!r.michelin_bib) return false;
+        }
+      }
+    }
+    return true;
+  });
+
+  // Free-text search (name, cuisine, area, city, tagline)
+  if (state.searchQuery) {
+    const q = state.searchQuery.toLowerCase();
+    items = items.filter(r => {
+      const searchable = [
+        r.name_en,
+        r.name_th,
+        (r.cuisine_types || []).join(' '),
+        r.area,
+        r.city,
+        r.tagline
+      ].join(' ').toLowerCase();
+      return searchable.includes(q);
+    });
+  }
+
+  // Sort
   if (state.sortOrder === 'nearest' && state.userLat && state.userLng) {
-    results.sort((a, b) => {
-      const distA = a._distanceMetres || 999999;
-      const distB = b._distanceMetres || 999999;
+    // Already sorted by distance from RPC, but re-sort to be sure
+    items.sort((a, b) => {
+      const distA = a._distanceMetres || Infinity;
+      const distB = b._distanceMetres || Infinity;
       return distA - distB;
     });
   } else {
-    // Default sort: rating (descending)
-    results.sort((a, b) => (b.wongnai_rating || 0) - (a.wongnai_rating || 0));
+    // Sort by rating
+    items.sort((a, b) => (b.wongnai_rating || 0) - (a.wongnai_rating || 0));
   }
 
-  state.filtered = results;
-  renderFilterChips();
-  renderCardList();
-}
+  state.filtered = items;
 
-function renderFilterChips() {
-  const chips = dom.filterChips;
-  if (!chips) return;
-
-  chips.innerHTML = '';
-
-  // Period filter chips
-  ['breakfast', 'lunch', 'dinner', 'late_night'].forEach(period => {
-    const label = period === 'late_night' ? 'Late Night' : period.charAt(0).toUpperCase() + period.slice(1);
-    const isActive = state.activeFilters.period === period;
-
-    const chip = document.createElement('button');
-    chip.className = `chip ${isActive ? 'active' : ''}`;
-    chip.textContent = label;
-    chip.onclick = () => {
-      state.activeFilters.period = isActive ? null : period;
-      applyFiltersAndSearch();
-    };
-    chips.appendChild(chip);
-  });
-
-  // Open now chip
-  const openNowChip = document.createElement('button');
-  openNowChip.className = `chip ${state.activeFilters.openNow ? 'active' : ''}`;
-  openNowChip.textContent = 'Open Now';
-  openNowChip.onclick = () => {
-    state.activeFilters.openNow = !state.activeFilters.openNow;
-    applyFiltersAndSearch();
-  };
-  chips.appendChild(openNowChip);
-
-  // Michelin chip
-  if (state.activeFilters.michelin) {
-    const michChip = document.createElement('button');
-    michChip.className = 'chip active';
-    michChip.textContent = state.activeFilters.michelin === 'star'
-      ? 'Michelin Star'
-      : state.activeFilters.michelin === 'bib'
-      ? 'Bib Gourmand'
-      : 'Michelin';
-    michChip.onclick = () => {
-      state.activeFilters.michelin = null;
-      applyFiltersAndSearch();
-    };
-    chips.appendChild(michChip);
-  }
-
-  // Halal chip
-  if (state.activeFilters.isHalal) {
-    const halalChip = document.createElement('button');
-    halalChip.className = 'chip active';
-    halalChip.textContent = 'Halal';
-    halalChip.onclick = () => {
-      state.activeFilters.isHalal = false;
-      applyFiltersAndSearch();
-    };
-    chips.appendChild(halalChip);
-  }
-
-  // Vegetarian chip
-  if (state.activeFilters.isVegetarianFriendly) {
-    const vegChip = document.createElement('button');
-    vegChip.className = 'chip active';
-    vegChip.textContent = 'Vegetarian';
-    vegChip.onclick = () => {
-      state.activeFilters.isVegetarianFriendly = false;
-      applyFiltersAndSearch();
-    };
-    chips.appendChild(vegChip);
+  // Render UI
+  if (state.activeView === 'list') {
+    renderCardList();
+  } else if (state.activeView === 'map') {
+    renderPins(state.filtered);
   }
 }
-
-/* ============================================================
-   CARD LIST RENDERING
-   ============================================================ */
 
 function renderCardList() {
-  const container = dom.cardList;
-  if (!container) return;
+  if (!dom.cardList) return;
 
   if (state.filtered.length === 0) {
-    container.style.display = 'none';
     if (dom.emptyState) {
-      dom.emptyState.textContent = state.searchQuery
-        ? 'No results. Try adjusting your search or filters.'
-        : 'No restaurants match your filters.';
-      dom.emptyState.removeAttribute('hidden');
       dom.emptyState.style.display = 'flex';
+      dom.emptyState.removeAttribute('hidden');
     }
-    if (dom.skeletonList) dom.skeletonList.style.display = 'none';
+    dom.cardList.style.display = 'none';
+    dom.cardList.innerHTML = '';
     return;
   }
 
-  container.style.display = 'flex';
-  container.innerHTML = '';
   if (dom.emptyState) dom.emptyState.style.display = 'none';
-  if (dom.skeletonList) dom.skeletonList.style.display = 'none';
 
-  state.filtered.forEach(restaurant => {
-    const card = renderRestaurantCard(restaurant);
-    container.appendChild(card);
-  });
+  const html = state.filtered.map(r => cardHTML(r)).join('');
+  dom.cardList.innerHTML = html;
+  dom.cardList.style.display = 'flex';
+
+  // Attach event listeners
+  attachCardListeners();
 }
 
-function renderRestaurantCard(restaurant) {
-  const card = document.createElement('div');
-  card.className = 'card';
-  card.onclick = () => {
-    state.selectedId = restaurant.id;
-    renderDetailView();
-    state.activeView = 'detail';
-    showDetailView();
-  };
+function attachCardListeners() {
+  // Card taps → detail view
+  document.querySelectorAll('[data-restaurant-id]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      // Ignore clicks on buttons (wishlist, visited, star rating)
+      if (e.target.tagName === 'BUTTON' && e.target.dataset.action) return;
+      // Ignore clicks on links
+      if (e.target.tagName === 'A') return;
 
-  const personalData = state.personalData.get(restaurant.id) || {};
-  const isWishlisted = personalData.is_wishlisted;
-  const isVisited = personalData.is_visited;
+      const restaurantId = parseInt(el.dataset.restaurantId, 10);
+      showDetail(restaurantId);
+    });
+  });
 
-  const thumbnailUrl = restaurant.photos && restaurant.photos[0]
-    ? restaurant.photos[0]
-    : restaurant.identification_photo_url;
+  // Wishlist buttons
+  document.querySelectorAll('[data-action="toggle-wishlist"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const restaurantId = parseInt(btn.dataset.restaurantId, 10);
+      const personal = state.personalData.get(restaurantId) || {};
+      const nextValue = !personal.is_wishlisted;
+      upsertPersonalData(restaurantId, { is_wishlisted: nextValue });
+      // Re-render (or just update UI state)
+      applyFiltersAndSearch();
+    });
+  });
 
-  // Card header (image + wishlist button)
-  const header = document.createElement('div');
-  header.className = 'card-header';
+  // Visited buttons
+  document.querySelectorAll('[data-action="toggle-visited"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const restaurantId = parseInt(btn.dataset.restaurantId, 10);
+      const personal = state.personalData.get(restaurantId) || {};
+      const nextValue = !personal.is_visited;
+      upsertPersonalData(restaurantId, { is_visited: nextValue });
+      applyFiltersAndSearch();
+    });
+  });
 
-  const img = document.createElement('img');
-  img.src = thumbnailUrl || '';
-  img.alt = restaurant.name_en || '';
-  img.onerror = () => { img.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect fill="%23eee" width="200" height="200"/></svg>'; };
-  header.appendChild(img);
-
-  const wishlistBtn = document.createElement('button');
-  wishlistBtn.className = `wishlist-btn ${isWishlisted ? 'active' : ''}`;
-  wishlistBtn.innerHTML = isWishlisted ? '♡' : '♡';
-  wishlistBtn.onclick = (e) => {
-    e.stopPropagation();
-    const newState = !isWishlisted;
-    upsertPersonalData(restaurant.id, { is_wishlisted: newState });
-    personalData.is_wishlisted = newState;
-    wishlistBtn.classList.toggle('active');
-  };
-  header.appendChild(wishlistBtn);
-
-  card.appendChild(header);
-
-  // Card body
-  const body = document.createElement('div');
-  body.className = 'card-body';
-
-  // Title
-  const titleEl = document.createElement('h3');
-  titleEl.className = 'card-title';
-  titleEl.textContent = restaurant.name_en || restaurant.name_th;
-  body.appendChild(titleEl);
-
-  // Michelin badge
-  if (restaurant.michelin_stars || restaurant.michelin_bib) {
-    const badge = document.createElement('div');
-    badge.className = 'michelin-badge';
-    badge.textContent = restaurant.michelin_stars
-      ? `${restaurant.michelin_stars} Star`
-      : 'Bib Gourmand';
-    body.appendChild(badge);
-  }
-
-  // Location + distance
-  const locationEl = document.createElement('p');
-  locationEl.className = 'card-location';
-  if (restaurant.location_precision === 'area_only' && restaurant.area) {
-    locationEl.textContent = restaurant.area;
-  } else {
-    const dist = formatDistance(restaurant._distanceMetres, restaurant.location_precision);
-    locationEl.textContent = dist || restaurant.area || restaurant.city || 'Location info unavailable';
-  }
-  body.appendChild(locationEl);
-
-  // Open status
-  const openStatus = isOpenNow(restaurant.opening_hours);
-  if (openStatus !== 'unknown') {
-    const openEl = document.createElement('p');
-    openEl.className = `open-status ${openStatus}`;
-    openEl.textContent = openStatus === 'open' ? 'Open now' : 'Closed';
-    body.appendChild(openEl);
-  }
-
-  // Rating
-  if (restaurant.wongnai_rating) {
-    const ratingEl = document.createElement('p');
-    ratingEl.className = 'card-rating';
-    ratingEl.textContent = `Rating: ${restaurant.wongnai_rating.toFixed(1)}`;
-    body.appendChild(ratingEl);
-  }
-
-  card.appendChild(body);
-
-  return card;
+  // Star rating buttons (on cards — read-only, no interaction)
+  // Interactive star rating is only on the detail view
 }
 
 /* ============================================================
    DETAIL VIEW
    ============================================================ */
 
-function renderDetailView() {
-  if (!state.selectedId) return;
-
-  const restaurant = state.restaurants.find(r => r.id === state.selectedId);
+function showDetail(restaurantId) {
+  const restaurant = state.restaurants.find(r => r.id === restaurantId);
   if (!restaurant) return;
 
-  const personalData = state.personalData.get(state.selectedId) || {};
-  const isWishlisted = personalData.is_wishlisted;
-  const isVisited = personalData.is_visited;
+  state.selectedId = restaurantId;
+  state.activeView = 'detail';
 
-  const detailBody = dom.detailBody;
-  if (!detailBody) return;
-
-  detailBody.innerHTML = '';
-
-  // Cover image
-  const coverImg = document.createElement('img');
-  coverImg.className = 'detail-cover-image';
-  const coverUrl = restaurant.photos && restaurant.photos[0]
-    ? restaurant.photos[0]
-    : restaurant.identification_photo_url;
-  coverImg.src = coverUrl || '';
-  coverImg.alt = restaurant.name_en || '';
-  detailBody.appendChild(coverImg);
-
-  // Info section
-  const infoSection = document.createElement('div');
-  infoSection.className = 'detail-section';
-
-  // Title + buttons
-  const titleRow = document.createElement('div');
-  titleRow.className = 'detail-title-row';
-
-  const title = document.createElement('h1');
-  title.textContent = restaurant.name_en || restaurant.name_th;
-  titleRow.appendChild(title);
-
-  const buttonRow = document.createElement('div');
-  buttonRow.className = 'detail-button-row';
-
-  const wishlistBtn = document.createElement('button');
-  wishlistBtn.className = `detail-btn wishlist-btn ${isWishlisted ? 'active' : ''}`;
-  wishlistBtn.innerHTML = '♡';
-  wishlistBtn.onclick = () => {
-    const newState = !isWishlisted;
-    upsertPersonalData(state.selectedId, { is_wishlisted: newState });
-    personalData.is_wishlisted = newState;
-    wishlistBtn.classList.toggle('active');
-  };
-  buttonRow.appendChild(wishlistBtn);
-
-  const visitedBtn = document.createElement('button');
-  visitedBtn.className = `detail-btn visited-btn ${isVisited ? 'active' : ''}`;
-  visitedBtn.textContent = '✓';
-  visitedBtn.onclick = () => {
-    const newState = !isVisited;
-    upsertPersonalData(state.selectedId, { is_visited: newState });
-    personalData.is_visited = newState;
-    visitedBtn.classList.toggle('active');
-  };
-  buttonRow.appendChild(visitedBtn);
-
-  const navBtn = document.createElement('button');
-  navBtn.className = 'detail-btn nav-btn';
-  navBtn.textContent = '→';
-  navBtn.onclick = () => {
-    showNavChoiceSheet(restaurant);
-  };
-  buttonRow.appendChild(navBtn);
-
-  titleRow.appendChild(buttonRow);
-  infoSection.appendChild(titleRow);
-
-  // Thai name (if different)
-  if (restaurant.name_th && restaurant.name_th !== restaurant.name_en) {
-    const thaiName = document.createElement('p');
-    thaiName.className = 'detail-thai-name';
-    thaiName.textContent = restaurant.name_th;
-    infoSection.appendChild(thaiName);
+  if (dom.detailBody) {
+    dom.detailBody.innerHTML = detailViewHTML(restaurant);
+    attachDetailListeners();
   }
 
-  detailBody.appendChild(infoSection);
+  // Show detail, hide list
+  if (dom.viewDetail) dom.viewDetail.style.display = 'block';
+  if (dom.viewList) dom.viewList.style.display = 'none';
+  if (dom.viewMap) dom.viewMap.style.display = 'none';
 
-  // Badges section
-  const badgeSection = document.createElement('div');
-  badgeSection.className = 'detail-section badge-section';
-
-  if (restaurant.michelin_stars || restaurant.michelin_bib) {
-    const michBadge = document.createElement('span');
-    michBadge.className = 'detail-badge michelin-badge';
-    michBadge.textContent = restaurant.michelin_stars
-      ? `${restaurant.michelin_stars} Star${restaurant.michelin_stars > 1 ? 's' : ''}`
-      : 'Bib Gourmand';
-    badgeSection.appendChild(michBadge);
-  }
-
-  if (restaurant.is_halal) {
-    const halalBadge = document.createElement('span');
-    halalBadge.className = 'detail-badge halal-badge';
-    halalBadge.textContent = 'Halal';
-    badgeSection.appendChild(halalBadge);
-  }
-
-  if (restaurant.is_vegetarian_friendly) {
-    const vegBadge = document.createElement('span');
-    vegBadge.className = 'detail-badge veg-badge';
-    vegBadge.textContent = 'Vegetarian-friendly';
-    badgeSection.appendChild(vegBadge);
-  }
-
-  if (badgeSection.children.length > 0) {
-    detailBody.appendChild(badgeSection);
-  }
-
-  // Open status
-  const openStatus = isOpenNow(restaurant.opening_hours);
-  if (openStatus !== 'unknown') {
-    const openEl = document.createElement('p');
-    openEl.className = `detail-open-status ${openStatus}`;
-    openEl.textContent = openStatus === 'open' ? 'Open now' : 'Closed';
-    detailBody.appendChild(openEl);
-  }
-
-  // Rating
-  if (restaurant.wongnai_rating) {
-    const ratingEl = document.createElement('p');
-    ratingEl.className = 'detail-rating';
-    ratingEl.textContent = `Wongnai Rating: ${restaurant.wongnai_rating.toFixed(1)}/5`;
-    detailBody.appendChild(ratingEl);
-  }
-
-  // Location details
-  const locSection = document.createElement('div');
-  locSection.className = 'detail-section';
-
-  const locTitle = document.createElement('h3');
-  locTitle.textContent = 'Location';
-  locSection.appendChild(locTitle);
-
-  const locText = document.createElement('p');
-  locText.textContent = `${restaurant.area || ''}${restaurant.area && restaurant.city ? ', ' : ''}${restaurant.city || ''}`;
-  if (!locText.textContent.trim()) locText.textContent = 'Location not available';
-  locSection.appendChild(locText);
-
-  if (restaurant.location_notes) {
-    const notesEl = document.createElement('p');
-    notesEl.className = 'detail-location-notes';
-    notesEl.textContent = restaurant.location_notes;
-    locSection.appendChild(notesEl);
-  }
-
-  detailBody.appendChild(locSection);
-
-  // Opening hours
-  if (restaurant.opening_hours) {
-    const hoursSection = document.createElement('div');
-    hoursSection.className = 'detail-section';
-
-    const hoursTitle = document.createElement('h3');
-    hoursTitle.textContent = 'Opening Hours';
-    hoursSection.appendChild(hoursTitle);
-
-    DAY_KEYS.forEach(dayKey => {
-      const slots = restaurant.opening_hours[dayKey];
-      const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][DAY_KEYS.indexOf(dayKey)];
-
-      const dayEl = document.createElement('p');
-      dayEl.className = 'detail-hours-day';
-
-      if (slots === null) {
-        dayEl.textContent = `${dayName}: Closed`;
-      } else if (!Array.isArray(slots) || slots.length === 0) {
-        dayEl.textContent = `${dayName}: Not available`;
-      } else {
-        const times = slots.map(s => `${s.open}-${s.close}`).join(', ');
-        dayEl.textContent = `${dayName}: ${times}`;
-      }
-
-      hoursSection.appendChild(dayEl);
-    });
-
-    detailBody.appendChild(hoursSection);
-  }
-
-  // Contact info
-  const contactSection = document.createElement('div');
-  contactSection.className = 'detail-section';
-
-  const contactTitle = document.createElement('h3');
-  contactTitle.textContent = 'Contact';
-  contactSection.appendChild(contactTitle);
-
-  if (restaurant.phone) {
-    const phoneEl = document.createElement('p');
-    phoneEl.innerHTML = `Phone: <a href="tel:${restaurant.phone}">${restaurant.phone}</a>`;
-    contactSection.appendChild(phoneEl);
-  }
-
-  if (restaurant.website) {
-    const webEl = document.createElement('p');
-    webEl.innerHTML = `Website: <a href="${restaurant.website}" target="_blank">Visit</a>`;
-    contactSection.appendChild(webEl);
-  }
-
-  detailBody.appendChild(contactSection);
-
-  // Dishes
-  if (restaurant.dishes && Array.isArray(restaurant.dishes) && restaurant.dishes.length > 0) {
-    const dishSection = document.createElement('div');
-    dishSection.className = 'detail-section';
-
-    const dishTitle = document.createElement('h3');
-    dishTitle.textContent = 'Signature Dishes';
-    dishSection.appendChild(dishTitle);
-
-    const dishList = document.createElement('ul');
-    restaurant.dishes.forEach(dish => {
-      const li = document.createElement('li');
-      li.textContent = dish;
-      dishList.appendChild(li);
-    });
-    dishSection.appendChild(dishList);
-
-    detailBody.appendChild(dishSection);
-  }
-
-  // Update detail title
-  if (dom.detailTitle) {
-    dom.detailTitle.textContent = restaurant.name_en || restaurant.name_th;
-  }
+  // Scroll to top
+  window.scrollTo(0, 0);
 }
 
-function showDetailView() {
-  if (dom.viewList)   dom.viewList.style.display = 'none';
-  if (dom.viewMap)    dom.viewMap.style.display = 'none';
-  if (dom.viewDetail) dom.viewDetail.style.display = 'flex';
+function attachDetailListeners() {
+  // Back button
+  if (dom.detailBack) {
+    dom.detailBack.addEventListener('click', () => {
+      state.selectedId = null;
+      state.activeView = 'list';
+      applyFiltersAndSearch();
 
-  // Update nav
-  if (dom.navList) dom.navList.classList.remove('active');
-  if (dom.navMap)  dom.navMap.classList.remove('active');
+      if (dom.viewDetail) dom.viewDetail.style.display = 'none';
+      if (dom.viewList) dom.viewList.style.display = 'block';
+    });
+  }
 
-  document.body.scrollTop = 0;
-  document.documentElement.scrollTop = 0;
+  // Wishlist toggle (detail)
+  document.querySelectorAll('[data-action="toggle-wishlist"][data-restaurant-id]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const restaurantId = parseInt(btn.dataset.restaurantId, 10);
+      const personal = state.personalData.get(restaurantId) || {};
+      const nextValue = !personal.is_wishlisted;
+      upsertPersonalData(restaurantId, { is_wishlisted: nextValue });
+      // Re-render detail
+      showDetail(restaurantId);
+    });
+  });
+
+  // Visited toggle (detail)
+  document.querySelectorAll('[data-action="toggle-visited"][data-restaurant-id]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const restaurantId = parseInt(btn.dataset.restaurantId, 10);
+      const personal = state.personalData.get(restaurantId) || {};
+      const nextValue = !personal.is_visited;
+      upsertPersonalData(restaurantId, { is_visited: nextValue });
+      showDetail(restaurantId);
+    });
+  });
+
+  // Star rating buttons (detail — interactive)
+  document.querySelectorAll('[data-action="rate"][data-restaurant-id]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const restaurantId = parseInt(btn.dataset.restaurantId, 10);
+      const rating = parseInt(btn.dataset.rating, 10);
+      const personal = state.personalData.get(restaurantId) || {};
+
+      // Tapping the same star clears the rating to null
+      const nextRating = personal.my_rating === rating ? null : rating;
+
+      upsertPersonalData(restaurantId, { my_rating: nextRating });
+      showDetail(restaurantId);
+    });
+  });
+
+  // Directions button
+  document.querySelectorAll('[data-action="directions"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const restaurantId = parseInt(btn.dataset.restaurantId, 10);
+      const restaurant = state.restaurants.find(r => r.id === restaurantId);
+      if (restaurant) {
+        showNavChoiceSheet(restaurant);
+      }
+    });
+  });
 }
 
 /* ============================================================
@@ -1048,245 +1217,153 @@ function showDetailView() {
    ============================================================ */
 
 function initMap() {
-  if (state.map) return; // Already initialized
-
-  state.map = L.map('map', {
-    center: [CONFIG.mapDefaultLat, CONFIG.mapDefaultLng],
-    zoom:   CONFIG.mapDefaultZoom,
-    zoomControl: true,
-    scrollWheelZoom: true
-  });
+  // Initialize Leaflet map
+  state.map = L.map('map').setView(
+    [CONFIG.mapDefaultLat, CONFIG.mapDefaultLng],
+    CONFIG.mapDefaultZoom
+  );
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '© OpenStreetMap'
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 19
   }).addTo(state.map);
 
-  // Render existing pins
-  if (state.filtered.length > 0) {
-    renderPins(state.filtered);
-  }
+  // Render pins for currently filtered restaurants
+  renderPins(state.filtered);
 }
 
 function renderPins(restaurants) {
+  if (!state.map) return;
+
   // Clear existing pins
-  state.mapPins.forEach(pin => state.map.removeLayer(pin));
+  state.mapPins.forEach(layer => state.map.removeLayer(layer));
   state.mapPins.clear();
 
-  restaurants.forEach(restaurant => {
-    if (!restaurant.lat || !restaurant.lng) return;
+  // Add pins for each restaurant
+  restaurants.forEach(r => {
+    if (!r.lat || !r.lng) return;
 
-    const marker = L.marker([restaurant.lat, restaurant.lng], {
-      title: restaurant.name_en || restaurant.name_th
-    })
-      .on('click', () => {
-        state.selectedId = restaurant.id;
-        renderDetailView();
-        state.activeView = 'detail';
-        showDetailView();
-      })
-      .addTo(state.map);
-
-    state.mapPins.set(restaurant.id, marker);
-  });
-}
-
-function showMapView() {
-  if (dom.viewList)   dom.viewList.style.display = 'none';
-  if (dom.viewMap)    dom.viewMap.style.display = 'flex';
-  if (dom.viewDetail) dom.viewDetail.style.display = 'none';
-
-  // Update nav
-  if (dom.navList) dom.navList.classList.remove('active');
-  if (dom.navMap)  dom.navMap.classList.add('active');
-
-  // Initialize or refresh map
-  if (!state.map) {
-    initMap();
-  } else {
-    state.map.invalidateSize();
-    renderPins(state.filtered);
-  }
-}
-
-/* ============================================================
-   SEARCH & VIEW TOGGLING (B2_16)
-   ============================================================ */
-
-function setupSearch() {
-  const input = dom.searchInput;
-  const clearBtn = dom.searchClearBtn;
-
-  if (input) {
-    input.addEventListener('input', (e) => {
-      state.searchQuery = e.target.value;
-      applyFiltersAndSearch();
+    const marker = L.circleMarker([r.lat, r.lng], {
+      radius: 8,
+      fillColor: isOpenNow(r.opening_hours) === 'open' ? '#2ecc71' : '#e74c3c',
+      color: '#000',
+      weight: 1,
+      opacity: 1,
+      fillOpacity: 0.7
     });
-  }
 
-  if (clearBtn) {
-    clearBtn.addEventListener('click', () => {
-      state.searchQuery = '';
-      if (input) input.value = '';
-      applyFiltersAndSearch();
-    });
-  }
-}
+    marker.on('click', () => {
+      showDetail(r.id);
+      state.activeView = 'detail';
 
-function setupViewToggle() {
-  const listBtn = dom.navList;
-  const mapBtn = dom.navMap;
-
-  if (listBtn) {
-    listBtn.addEventListener('click', () => {
-      state.activeView = 'list';
-      if (dom.viewList) dom.viewList.style.display = 'flex';
+      if (dom.viewDetail) dom.viewDetail.style.display = 'block';
+      if (dom.viewList) dom.viewList.style.display = 'none';
       if (dom.viewMap) dom.viewMap.style.display = 'none';
-      if (dom.viewDetail) dom.viewDetail.style.display = 'none';
-      listBtn.classList.add('active');
-      if (mapBtn) mapBtn.classList.remove('active');
     });
+
+    marker.bindPopup(`<strong>${escapeHTML(r.name_en || r.name_th)}</strong>`);
+    marker.addTo(state.map);
+    state.mapPins.set(r.id, marker);
+  });
+
+  // Re-fit bounds to all pins
+  if (restaurants.length > 0) {
+    const bounds = L.latLngBounds(restaurants.map(r => [r.lat, r.lng]));
+    state.map.fitBounds(bounds, { padding: [40, 40] });
   }
-
-  if (mapBtn) {
-    mapBtn.addEventListener('click', () => {
-      state.activeView = 'map';
-      showMapView();
-      if (listBtn) listBtn.classList.remove('active');
-      mapBtn.classList.add('active');
-    });
-  }
-}
-
-function setupViewModeToggle() {
-  const toggle = dom.viewToggle;
-  if (!toggle) return;
-
-  const updateToggleUI = () => {
-    const modes = ['all', 'wishlist', 'visited'];
-    toggle.innerHTML = '';
-
-    modes.forEach(mode => {
-      const btn = document.createElement('button');
-      btn.className = `view-mode-btn ${state.viewMode === mode ? 'active' : ''}`;
-      btn.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
-      btn.onclick = () => {
-        state.viewMode = mode;
-        updateToggleUI();
-        applyFiltersAndSearch();
-      };
-      toggle.appendChild(btn);
-    });
-  };
-
-  updateToggleUI();
 }
 
 /* ============================================================
-   NAVIGATION SHEET (MISSING-03)
+   SEARCH INPUT
    ============================================================ */
 
-function showNavChoiceSheet(restaurant) {
-  const dest = resolveNavDestination(restaurant);
-  if (!dest) {
-    showToast('Location information not available for navigation', 'error');
-    return;
+function initSearch() {
+  const searchInput = document.getElementById('search-input');
+  const searchClearBtn = document.getElementById('search-clear-btn');
+
+  if (!searchInput) return;
+
+  // Debounce search input
+  let searchTimeout;
+  searchInput.addEventListener('input', (e) => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      state.searchQuery = e.target.value.trim();
+      applyFiltersAndSearch();
+    }, 300);
+  });
+
+  // Clear button
+  if (searchClearBtn) {
+    searchClearBtn.addEventListener('click', () => {
+      state.searchQuery = '';
+      searchInput.value = '';
+      applyFiltersAndSearch();
+    });
   }
-
-  const overlay = dom.navChoiceOverlay;
-  const sheet = dom.navChoiceSheet;
-
-  if (!overlay || !sheet) return;
-
-  sheet.innerHTML = '';
-
-  const title = document.createElement('h2');
-  title.textContent = 'Open Navigation';
-  sheet.appendChild(title);
-
-  // Apple Maps
-  const appleMapsBtn = document.createElement('button');
-  appleMapsBtn.className = 'nav-choice-btn';
-  appleMapsBtn.textContent = 'Apple Maps';
-  appleMapsBtn.onclick = () => {
-    const url = `maps://maps.apple.com/?daddr=${dest.lat},${dest.lng}&q=${encodeURIComponent(dest.label)}`;
-    window.location.href = url;
-    closeNavChoiceSheet();
-  };
-  sheet.appendChild(appleMapsBtn);
-
-  // Google Maps
-  const googleMapsBtn = document.createElement('button');
-  googleMapsBtn.className = 'nav-choice-btn';
-  googleMapsBtn.textContent = 'Google Maps';
-  googleMapsBtn.onclick = () => {
-    const url = `https://www.google.com/maps/search/${encodeURIComponent(dest.label)}/@${dest.lat},${dest.lng},15z`;
-    window.location.href = url;
-    closeNavChoiceSheet();
-  };
-  sheet.appendChild(googleMapsBtn);
-
-  // Cancel
-  const cancelBtn = document.createElement('button');
-  cancelBtn.className = 'nav-choice-btn cancel';
-  cancelBtn.textContent = 'Cancel';
-  cancelBtn.onclick = closeNavChoiceSheet;
-  sheet.appendChild(cancelBtn);
-
-  overlay.style.display = 'flex';
 }
 
-function closeNavChoiceSheet() {
-  const overlay = dom.navChoiceOverlay;
-  if (overlay) overlay.style.display = 'none';
+/* ============================================================
+   VIEW MODE (WISHLIST / VISITED)
+   ============================================================ */
+
+function initViewToggle() {
+  const viewToggle = document.getElementById('view-toggle');
+  if (!viewToggle) return;
+
+  const buttons = viewToggle.querySelectorAll('button[data-view-mode]');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.viewMode = btn.dataset.viewMode || 'all';
+      applyFiltersAndSearch();
+
+      // Update active state
+      buttons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
 }
 
 /* ============================================================
    SORT SHEET
    ============================================================ */
 
-function showSortSheet() {
-  const overlay = dom.sortSheetOverlay;
-  const sheet = dom.sortSheet;
+function initSortSheet() {
+  const sortSheetOverlay = document.getElementById('sort-sheet-overlay');
+  const sortSheet = document.getElementById('sort-sheet');
+  const navMap = document.getElementById('nav-map');
 
-  if (!overlay || !sheet) return;
+  if (!sortSheetOverlay || !sortSheet) return;
 
-  sheet.innerHTML = '';
-
-  const title = document.createElement('h2');
-  title.textContent = 'Sort By';
-  sheet.appendChild(title);
-
-  // Rating (always available)
-  const ratingBtn = document.createElement('button');
-  ratingBtn.className = `sort-option ${state.sortOrder === 'rating' ? 'active' : ''}`;
-  ratingBtn.textContent = 'Rating';
-  ratingBtn.onclick = () => {
-    state.sortOrder = 'rating';
-    applyFiltersAndSearch();
-    closeSortSheet();
-  };
-  sheet.appendChild(ratingBtn);
-
-  // Nearest (only if GPS available)
-  if (state.locationStatus === 'granted' && state.userLat && state.userLng) {
-    const nearestBtn = document.createElement('button');
-    nearestBtn.className = `sort-option ${state.sortOrder === 'nearest' ? 'active' : ''}`;
-    nearestBtn.textContent = 'Nearest';
-    nearestBtn.onclick = () => {
-      state.sortOrder = 'nearest';
-      applyFiltersAndSearch();
-      closeSortSheet();
-    };
-    sheet.appendChild(nearestBtn);
+  // Trigger from nav-map button
+  if (navMap) {
+    navMap.addEventListener('click', () => {
+      sortSheetOverlay.classList.add('sort-sheet-overlay--visible');
+    });
   }
 
-  overlay.style.display = 'flex';
-}
+  // Sort options
+  const sortOptions = sortSheet.querySelectorAll('[data-sort-order]');
+  sortOptions.forEach(option => {
+    option.addEventListener('click', () => {
+      state.sortOrder = option.dataset.sortOrder || 'rating';
+      applyFiltersAndSearch();
 
-function closeSortSheet() {
-  const overlay = dom.sortSheetOverlay;
-  if (overlay) overlay.style.display = 'none';
+      // Update active state
+      sortOptions.forEach(o => o.classList.remove('active'));
+      option.classList.add('active');
+
+      // Close sheet
+      sortSheetOverlay.classList.remove('sort-sheet-overlay--visible');
+    });
+  });
+
+  // Close on overlay click
+  sortSheetOverlay.addEventListener('click', (e) => {
+    if (e.target === sortSheetOverlay) {
+      sortSheetOverlay.classList.remove('sort-sheet-overlay--visible');
+    }
+  });
 }
 
 /* ============================================================
@@ -1294,77 +1371,133 @@ function closeSortSheet() {
    ============================================================ */
 
 function showToast(message, type = 'info') {
-  const container = dom.toastContainer;
-  if (!container) return;
+  if (!dom.toastContainer) return;
 
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.textContent = message;
+  const toastEl = document.createElement('div');
+  toastEl.className = `toast toast--${type}`;
+  toastEl.textContent = message;
+  dom.toastContainer.appendChild(toastEl);
 
-  container.appendChild(toast);
-
+  // Auto-remove after 3s
   setTimeout(() => {
-    toast.classList.add('fade-out');
-    setTimeout(() => toast.remove(), 300);
+    toastEl.remove();
   }, 3000);
 }
 
 /* ============================================================
-   INITIALIZATION
+   UTILITY: HTML ESCAPING
+   ============================================================ */
+
+function escapeHTML(str) {
+  if (!str) return '';
+  const map = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return str.replace(/[&<>"']/g, m => map[m]);
+}
+
+/* ============================================================
+   INIT
    ============================================================ */
 
 async function init() {
+  // Load personal ID from localStorage
   state.personalId = getOrCreatePersonalId();
+
+  // Load personal data (wishlist, visited, rating)
   await loadPersonalData();
 
-  setupSearch();
-  setupViewToggle();
-  setupViewModeToggle();
-
-  // Show list view by default
-  if (dom.viewList) {
-    dom.viewList.style.display = 'flex';
-    if (dom.navList) dom.navList.classList.add('active');
-  }
-
-  // Close nav overlays on background click
-  if (dom.navChoiceOverlay) {
-    dom.navChoiceOverlay.addEventListener('click', (e) => {
-      if (e.target === dom.navChoiceOverlay) closeNavChoiceSheet();
-    });
-  }
-
-  if (dom.sortSheetOverlay) {
-    dom.sortSheetOverlay.addEventListener('click', (e) => {
-      if (e.target === dom.sortSheetOverlay) closeSortSheet();
-    });
-  }
-
-  // Router
-  window.addEventListener('hashchange', () => {
-    const hash = window.location.hash.slice(1);
-    if (hash.startsWith('restaurant/')) {
-      const id = parseInt(hash.split('/')[1], 10);
-      state.selectedId = id;
-      renderDetailView();
-      state.activeView = 'detail';
-      showDetailView();
-    } else if (hash === 'map') {
-      state.activeView = 'map';
-      showMapView();
-    } else {
-      state.activeView = 'list';
-      if (dom.viewList) dom.viewList.style.display = 'flex';
-      if (dom.viewMap) dom.viewMap.style.display = 'none';
-      if (dom.viewDetail) dom.viewDetail.style.display = 'none';
-      if (dom.navList) dom.navList.classList.add('active');
-      if (dom.navMap) dom.navMap.classList.remove('active');
-    }
-  };
-
+  // Fetch restaurants
   await fetchRestaurants();
+
+  // Render location notice
   renderLocationNotice();
-  renderFilterChips();
+
+  // Initialize UI components
+  initKeyboardHandler();
+  initSearch();
+  initViewToggle();
+  initSortSheet();
+
+  // Initialize detail view back button listener
+  if (dom.detailBack) {
+    dom.detailBack.addEventListener('click', () => {
+      state.selectedId = null;
+      state.activeView = 'list';
+      applyFiltersAndSearch();
+
+      if (dom.viewDetail) dom.viewDetail.style.display = 'none';
+      if (dom.viewList) dom.viewList.style.display = 'block';
+    });
+  }
+
+  // View switcher (list ↔ map)
+  const navList = document.getElementById('nav-list');
+  const navMap = document.getElementById('nav-map');
+
+  if (navList) {
+    navList.addEventListener('click', () => {
+      state.activeView = 'list';
+      if (dom.viewList) dom.viewList.style.display = 'block';
+      if (dom.viewMap) dom.viewMap.style.display = 'none';
+      applyFiltersAndSearch();
+    });
+  }
+
+  if (navMap) {
+    navMap.addEventListener('click', () => {
+      state.activeView = 'map';
+      if (dom.viewList) dom.viewList.style.display = 'none';
+      if (dom.viewMap) dom.viewMap.style.display = 'block';
+
+      // Initialize map on first view
+      if (!state.map) {
+        initMap();
+      } else {
+        state.map.invalidateSize();
+        renderPins(state.filtered);
+      }
+    });
+  }
+
+  // Render initial list
+  applyFiltersAndSearch();
+
+  // Handle URL hash routing (for links like #/restaurants/123)
+  async function handleRoute(hash) {
+    if (!hash || hash === '#') return;
+
+    const match = hash.match(/#\/restaurants\/(\d+)/);
+    if (match) {
+      const restaurantId = parseInt(match[1], 10);
+      showDetail(restaurantId);
+    }
+  }
+
+  const currentHash = window.location.hash;
+  if (currentHash && currentHash !== '#') {
+    state.pendingRoute = currentHash;
+    // Wait for data to load before routing
+    const timeout = setInterval(() => {
+      if (state.restaurants.length > 0) {
+        clearInterval(timeout);
+        const pending = state.pendingRoute;
+        state.pendingRoute = null;
+        handleRoute(pending);
+      }
+    }, 100);
+  }
+
+  // Route on hash change
+  window.addEventListener('hashchange', (e) => {
+    const hash = window.location.hash;
+    state.Route = null;
+    handleRoute(hash);
+  });
 }
 
-init().catch(err => console.error('[init] Failed:', err));
+document.addEventListener('DOMContentLoaded', init);
