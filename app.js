@@ -1495,6 +1495,22 @@ function attachEventListeners() {
     }
     applyFiltersAndSearch();
   });
+
+  // ── View toggle (All / Wishlist / Visited) — MISSING-11 ──
+  // Spec: docs/design/MISSING_FEATURES.md — MISSING-11
+  // 'all' = show all; 'wishlist' = wishlisted only; 'visited' = visited only
+  // Combines with other active filters using AND logic — does NOT clear existing filters
+  dom.viewToggle?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.view-toggle__btn');
+    if (!btn) return;
+    const mode = btn.dataset.mode; // 'all', 'wishlist', 'visited'
+    if (!mode) return;
+    state.viewMode = mode;
+    dom.viewToggle.querySelectorAll('.view-toggle__btn').forEach(b => {
+      b.classList.toggle('view-toggle__btn--active', b.dataset.mode === mode);
+    });
+    applyFiltersAndSearch();
+  });
 }
 
 async function handlePersonalToggle(id, action) {
