@@ -255,7 +255,7 @@ async function refreshFromNetwork() {
           photos, identification_photo_url, dishes,
           cart_identifier, location_notes,
           nearby_landmark_en, landmark_latitude, landmark_longitude,
-          legacy_note, source_quote_th, wongnai_rating,
+          legacy_note, source_quote_th, source_url, wongnai_rating,
           created_at
         `)
         .order('wongnai_rating', { ascending: false, nullsFirst: false })
@@ -821,6 +821,24 @@ function contactRowHTML(restaurant) {
   return `<div class="contact-row">${items.join('')}</div>`;
 }
 
+/* ── Source attribution HTML builder ────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-15
+// Renders the Thai-language source quote with a link to source_url.
+// Omitted entirely when source_quote_th is null.
+
+function sourceAttributionHTML(restaurant) {
+  if (!restaurant.source_quote_th) return '';
+
+  const link = restaurant.source_url
+    ? `<a href="${escapeHTML(restaurant.source_url)}" target="_blank" rel="noopener noreferrer" class="source-attribution__credit">As described by source ↗</a>`
+    : '';
+
+  return `<div class="source-attribution">
+    <p class="source-attribution__quote">"${escapeHTML(restaurant.source_quote_th)}"</p>
+    ${link}
+  </div>`;
+}
+
 /* ── Photo strip builder ────────────────────────────────── */
 // Spec: docs/design/MISSING_FEATURES.md — MISSING-05
 // Priority: identification_photo_url → cart/sign → exterior → dish/interior
@@ -1368,6 +1386,7 @@ function renderDetailPage(r) {
         <span class="open-indicator ${openClass}">${openLabel}</span>
         ${detailDistance}
         ${r.name_en && r.name_th ? `<p class="card__name-english">${escapeHTML(r.name_en)}</p>` : ''}
+        ${r.legacy_note ? `<span class="legacy-note">${escapeHTML(r.legacy_note)}</span>` : ''}
       </div>
 
       ${dishesDetailHTML(r.dishes)}
@@ -1406,6 +1425,8 @@ function renderDetailPage(r) {
         ${starRatingHTML(personal.my_rating, r.id, true)}
         ${personalNotesHTML(personal.notes, r.id)}
       </div>
+
+      ${sourceAttributionHTML(r)}
     </div>`;
 
   dom.app.classList.add('app-shell--detail');
