@@ -22,6 +22,14 @@ function bindMapDeps(deps) {
 const MAP_TILE_URL  = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 const MAP_TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
+/* ── Colour constants (inline — no CSS dependency) ──────────── */
+const PIN_OPEN    = '#4CAF50';
+const PIN_CLOSED  = '#E53935';
+const PIN_UNKNOWN = '#4A4440';
+const PIN_BORDER  = '#fff';
+const USER_BLUE   = '#4285F4';
+const GOLD        = '#C9A84C';
+
 /* ── Init ───────────────────────────────────────────────────── */
 
 function initMap() {
@@ -61,11 +69,13 @@ function initMap() {
     }, 600);
   });
 
-  // Open/Closed legend
+  // Open/Closed legend (inline styled — no CSS dependency)
   const legend = L.control({ position: 'bottomleft' });
   legend.onAdd = function () {
-    const div = L.DomUtil.create('div', 'map-legend');
-    div.innerHTML = `<span class="map-legend__item"><span class="map-legend__dot map-legend__dot--open"></span>Open</span><span class="map-legend__item"><span class="map-legend__dot map-legend__dot--closed"></span>Closed</span>`;
+    const div = L.DomUtil.create('div');
+    div.style.cssText = 'background:rgba(14,14,14,0.88);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border-radius:8px;padding:8px 12px;display:flex;gap:14px;align-items:center;font-family:-apple-system,system-ui,sans-serif;font-size:12px;color:#A8957C;';
+    const dotBase = 'display:inline-block;width:12px;height:12px;border-radius:50%;border:2px solid #fff;flex-shrink:0;margin-right:4px;vertical-align:middle;';
+    div.innerHTML = `<span style="display:flex;align-items:center;"><span style="${dotBase}background:${PIN_OPEN};"></span>Open</span><span style="display:flex;align-items:center;"><span style="${dotBase}background:${PIN_CLOSED};"></span>Closed</span>`;
     return div;
   };
   legend.addTo(state.map);
@@ -85,11 +95,17 @@ function centreMapOnUser(zoom) {
     state.userLocationMarker = null;
   }
 
+  const dotSize = 28;
+  const pulseSize = 60;
   const blueDotIcon = L.divIcon({
     className: '',
-    html: `<div class="user-location-dot" aria-label="Your location"><div class="user-location-pulse"></div></div>`,
-    iconSize:   [22, 22],
-    iconAnchor: [11, 11],
+    html: `<div style="position:relative;width:${dotSize}px;height:${dotSize}px;">
+      <div style="position:absolute;top:50%;left:50%;width:${pulseSize}px;height:${pulseSize}px;margin-top:-${pulseSize/2}px;margin-left:-${pulseSize/2}px;background:rgba(66,133,244,0.2);border-radius:50%;animation:loc-pulse 2s ease-out infinite;"></div>
+      <div style="width:${dotSize}px;height:${dotSize}px;background:${USER_BLUE};border:3.5px solid #fff;border-radius:50%;box-shadow:0 0 0 4px rgba(66,133,244,0.3),0 2px 8px rgba(0,0,0,0.35);position:relative;z-index:1;"></div>
+    </div>
+    <style>@keyframes loc-pulse{0%{transform:scale(0.5);opacity:1}100%{transform:scale(2.5);opacity:0}}</style>`,
+    iconSize:   [dotSize, dotSize],
+    iconAnchor: [dotSize / 2, dotSize / 2],
   });
 
   state.userLocationMarker = L.marker([state.userLat, state.userLng], {
@@ -121,6 +137,20 @@ function getZoomTier() {
   return 'far';
 }
 
+/* ── Dot size based on zoom ─────────────────────────────────── */
+
+function getDotSize(zoom) {
+  if (zoom >= 18) return 32;
+  if (zoom >= 17) return 28;
+  if (zoom >= 16) return 26;
+  if (zoom >= 15) return 24;
+  if (zoom >= 14) return 22;
+  if (zoom >= 13) return 18;
+  if (zoom >= 12) return 16;
+  if (zoom >= 11) return 14;
+  return 12;
+}
+
 /* ── Pin rendering ──────────────────────────────────────────── */
 
 function renderPins(restaurants) {
@@ -133,35 +163,53 @@ function renderPins(restaurants) {
   const tier = getZoomTier();
   if (tier === 'far') { renderClusters(restaurants); return; }
 
+  const zoom = state.map.getZoom();
+  const dotSize = getDotSize(zoom);
+  const showLabels = zoom >= 12;
+
   restaurants.forEach(r => {
     if (!r.lat || !r.lng) return;
     const openStatus = isOpenNow(r.opening_hours);
     const personal   = state.personalData.get(r.id) || {};
 
-    const dotClass = openStatus === 'open' || openStatus === 'closes_soon'
-      ? 'map-dot--open'
-      : openStatus === 'closed' ? 'map-dot--closed' : 'map-dot--unknown';
+    // Pin colour
+    const bgColor = (openStatus === 'open' || openStatus === 'closes_soon')
+      ? PIN_OPEN
+      : openStatus === 'closed' ? PIN_CLOSED : PIN_UNKNOWN;
 
-    const extraClasses = [];
-    if (personal.is_wishlisted) extraClasses.push('map-dot--wishlisted');
-    if (r.id === state.selectedId) extraClasses.push('map-dot--selected');
+    // State styling
+    const isSelected = r.id === state.selectedId;
+    const selStyle = isSelected ? 'transform:scale(1.4);z-index:100;' : '';
+    const wishShadow = personal.is_wishlisted
+      ? `box-shadow:0 0 0 3px ${GOLD},0 1px 4px rgba(0,0,0,0.4);`
+      : `box-shadow:0 1px 4px rgba(0,0,0,0.4),0 0 0 1px rgba(255,255,255,0.3);`;
+
+    // Dot inline style (zero CSS dependency)
+    const dotStyle = `display:inline-block;width:${dotSize}px;height:${dotSize}px;border-radius:50%;border:2.5px solid ${PIN_BORDER};background:${bgColor};${wishShadow}cursor:pointer;flex-shrink:0;${selStyle}`;
 
     const fullName = r.name_en || r.name_th || '';
 
     let html;
-    if (tier === 'close') {
+    if (showLabels) {
       const rawLabel = r.name_en || r.name_th || '';
-      const pinLabel = rawLabel.length > 24 ? rawLabel.slice(0, 23) + '…' : rawLabel;
-      html = `<div class="map-dot ${dotClass} ${extraClasses.join(' ')}" aria-label="${escapeHTML(fullName)}"></div><span class="map-dot__label">${escapeHTML(pinLabel)}</span>`;
+      const pinLabel = rawLabel.length > 22 ? rawLabel.slice(0, 21) + '\u2026' : rawLabel;
+      const fontSize = zoom >= 14 ? '13px' : '11px';
+      const labelPad = zoom >= 14 ? '3px 8px' : '2px 6px';
+      const labelStyle = `font-family:-apple-system,system-ui,sans-serif;font-size:${fontSize};font-weight:600;color:#1a1a1a;background:rgba(255,255,255,0.93);padding:${labelPad};border-radius:6px;white-space:nowrap;pointer-events:none;line-height:1.3;max-width:180px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 3px rgba(0,0,0,0.2);margin-left:5px;`;
+
+      html = `<div style="display:flex;align-items:center;"><div style="${dotStyle}" aria-label="${escapeHTML(fullName)}"></div><span style="${labelStyle}">${escapeHTML(pinLabel)}</span></div>`;
     } else {
-      html = `<div class="map-dot ${dotClass} ${extraClasses.join(' ')}" aria-label="${escapeHTML(fullName)}"></div>`;
+      html = `<div style="${dotStyle}" aria-label="${escapeHTML(fullName)}"></div>`;
     }
 
+    const iconW = showLabels ? 260 : dotSize + 6;
+    const iconH = Math.max(dotSize + 6, 26);
+
     const icon = L.divIcon({
-      className: tier === 'close' ? 'map-dot-wrapper map-dot-wrapper--labelled' : 'map-dot-wrapper',
+      className: '',
       html,
-      iconSize:   tier === 'close' ? [200, 28] : [20, 20],
-      iconAnchor: tier === 'close' ? [10, 14] : [10, 10],
+      iconSize:   [iconW, iconH],
+      iconAnchor: [dotSize / 2 + 3, iconH / 2],
     });
 
     const marker = L.marker([r.lat, r.lng], { icon }).addTo(state.map);
@@ -193,9 +241,11 @@ function renderClusters(restaurants) {
     const cLng = cell.lng / cell.count;
     const size = cell.count > 20 ? 48 : cell.count > 5 ? 40 : 32;
 
+    const clusterStyle = `display:flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;background:${GOLD};border-radius:50%;color:#0E0E0E;font-family:-apple-system,system-ui,sans-serif;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,0.5);cursor:pointer;`;
+
     const icon = L.divIcon({
       className: '',
-      html: `<div class="map-cluster" style="width:${size}px;height:${size}px">${cell.count}</div>`,
+      html: `<div style="${clusterStyle}">${cell.count}</div>`,
       iconSize:   [size, size],
       iconAnchor: [size / 2, size / 2],
     });
@@ -210,11 +260,11 @@ function renderClusters(restaurants) {
 /* ── Select pin ─────────────────────────────────────────────── */
 
 function selectMapPin(id) {
-  state.mapPins.forEach((marker, markerId) => {
-    const el = marker.getElement()?.querySelector('.map-dot');
-    if (!el) return;
-    el.classList.toggle('map-dot--selected', markerId === id);
-  });
+  // Re-render to apply selected state via inline styles
+  if (state.filtered.length > 0) {
+    state.selectedId = id;
+    renderPins(state.filtered);
+  }
   const marker = state.mapPins.get(id);
   if (marker && state.map) state.map.panTo(marker.getLatLng(), { animate: true });
 }
