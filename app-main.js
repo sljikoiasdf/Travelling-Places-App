@@ -452,6 +452,12 @@ async function init() {
     renderPins(state.filtered);
   }
 
+  // Centre map on user location if GPS was granted
+  if (state.locationStatus === 'granted' && state.userLat && state.userLng) {
+    centreMapOnUser();
+    if (state.map && state.mapPins.size > 0) fitMapToPins();
+  }
+
   // Handle any route that was pending (restaurant detail before data loaded)
   if (state.pendingRoute) {
     const pending = state.pendingRoute;

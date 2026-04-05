@@ -98,17 +98,153 @@ function haversineDistance(lat1, lng1, lat2, lng2) {
 }
 
 /* ── GPS status notice ───────────────────────────────────────
-   Shows a notice when GPS is denied/unavailable.
-   Reads #location-notice element in index.html.
+   Shows location picker when GPS is denied/unavailable.
    ────────────────────────────────────────────────────────── */
 function renderLocationNotice() {
   const el = document.getElementById('location-notice');
-  if (!el) return;
-  if (state.locationStatus === 'denied' || state.locationStatus === 'unavailable') {
-    el.textContent = 'Showing all restaurants — enable location for proximity sorting';
-    el.hidden = false;
-  } else {
-    el.hidden = true;
+  if (el) el.hidden = true; // hide legacy notice element
+  if ((state.locationStatus === 'denied' || state.locationStatus === 'unavailable') && !state.locationManual) {
+    showLocationPicker();
+  }
+}
+
+/* ── Location Picker Overlay ─────────────────────────────────
+   Full-screen overlay shown when GPS is denied/unavailable.
+   Offers: city buttons, address geocoding, skip option.
+   ────────────────────────────────────────────────────────── */
+function showLocationPicker() {
+  // Don't show if already showing
+  if (document.getElementById('loc-picker-overlay')) return;
+
+  // Build city buttons dynamically from restaurant data
+  const cities = [...new Set(state.restaurants.map(r => r.city).filter(Boolean))].sort();
+  const cityBtnsHTML = cities.map(city => {
+    const label = typeof cityLabel === 'function' ? cityLabel(city) : city.replace(/_/g, ' ');
+    return `<button class="loc-picker__city-btn" data-city="${escapeHTML(city)}">${escapeHTML(label)}</button>`;
+  }).join('');
+
+  const overlay = document.createElement('div');
+  overlay.id = 'loc-picker-overlay';
+  overlay.className = 'loc-picker-overlay';
+  overlay.innerHTML = `
+    <div class="loc-picker">
+      <div class="loc-picker__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+          <circle cx="12" cy="9" r="2.5"/>
+        </svg>
+      </div>
+      <h2 class="loc-picker__title">Location not available</h2>
+      <p class="loc-picker__subtitle">Choose a city or enter an address</p>
+      <div class="loc-picker__cities">${cityBtnsHTML}</div>
+      <div class="loc-picker__divider"><span>or enter an address</span></div>
+      <form class="loc-picker__address-form" id="loc-picker-form">
+        <input type="text" class="loc-picker__address-input" id="loc-picker-address"
+               placeholder="e.g. 123 Collins St, Melbourne"
+               autocomplete="street-address" autocorrect="off" spellcheck="false">
+        <button type="submit" class="loc-picker__find-btn">Find</button>
+      </form>
+      <p class="loc-picker__error" id="loc-picker-error" hidden></p>
+      <button class="loc-picker__skip" id="loc-picker-skip">Skip — browse without location</button>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // City button clicks
+  overlay.querySelectorAll('.loc-picker__city-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setLocationFromCity(btn.dataset.city);
+      hideLocationPicker();
+    });
+  });
+
+  // Address form submit
+  const form = document.getElementById('loc-picker-form');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = document.getElementById('loc-picker-address');
+    const addr = input.value.trim();
+    if (!addr) return;
+    const errorEl = document.getElementById('loc-picker-error');
+    const findBtn = form.querySelector('.loc-picker__find-btn');
+    findBtn.textContent = 'Searching...';
+    findBtn.disabled = true;
+    errorEl.hidden = true;
+    const ok = await geocodeAddress(addr);
+    if (ok) {
+      hideLocationPicker();
+    } else {
+      errorEl.textContent = 'Could not find that address. Try adding the city or country.';
+      errorEl.hidden = false;
+      findBtn.textContent = 'Find';
+      findBtn.disabled = false;
+    }
+  });
+
+  // Skip
+  document.getElementById('loc-picker-skip').addEventListener('click', () => {
+    state.locationManual = true;
+    hideLocationPicker();
+  });
+}
+
+function hideLocationPicker() {
+  const overlay = document.getElementById('loc-picker-overlay');
+  if (overlay) overlay.remove();
+}
+
+/* ── Set location from a city button ─────────────────────── */
+function setLocationFromCity(city) {
+  const centre = CITY_CENTRES[city];
+  if (!centre) return;
+  state.userLat = centre.lat;
+  state.userLng = centre.lng;
+  state.locationManual = true;
+  state.locationStatus = 'granted';
+  state.sortOrder = 'nearest';
+
+  // Recalculate haversine distances for all restaurants
+  state.restaurants = state.restaurants.map(r => ({
+    ...r,
+    _distanceMetres: haversineDistance(state.userLat, state.userLng, r.lat, r.lng)
+  }));
+
+  applyFiltersAndSearch();
+  centreMapOnUser();
+  if (state.map && state.mapPins.size > 0) fitMapToPins();
+}
+
+/* ── Geocode an address via Nominatim ────────────────────── */
+async function geocodeAddress(address) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`;
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'ThailandFoodGuide/1.0' }
+    });
+    const results = await res.json();
+    if (!results || results.length === 0) return false;
+
+    const { lat, lon } = results[0];
+    state.userLat = parseFloat(lat);
+    state.userLng = parseFloat(lon);
+    state.locationManual = true;
+    state.locationStatus = 'granted';
+    state.sortOrder = 'nearest';
+
+    // Recalculate haversine distances
+    state.restaurants = state.restaurants.map(r => ({
+      ...r,
+      _distanceMetres: haversineDistance(state.userLat, state.userLng, r.lat, r.lng)
+    }));
+
+    applyFiltersAndSearch();
+    centreMapOnUser();
+    if (state.map && state.mapPins.size > 0) fitMapToPins();
+    return true;
+  } catch (err) {
+    console.error('[geocode] Failed:', err);
+    return false;
   }
 }
 

@@ -12,13 +12,40 @@ function initMap() {
     return;
   }
   state.map = L.map(dom.mapContainer, {
-    center: [CONFIG.mapDefaultLat, CONFIG.mapDefaultLng],
-    zoom:   CONFIG.mapDefaultZoom,
+    center: [CONFIG.mapFallbackLat, CONFIG.mapFallbackLng],
+    zoom:   CONFIG.mapFallbackZoom,
     zoomControl: true,
     attributionControl: true,
   });
   L.tileLayer(MAP_TILE_URL, { attribution: MAP_TILE_ATTR, maxZoom: 19 }).addTo(state.map);
   setTimeout(() => state.map.invalidateSize(), 50);
+}
+
+/* ── Blue dot — user location marker ─────────────────────── */
+
+function centreMapOnUser() {
+  if (!state.map || !state.userLat || !state.userLng) return;
+  state.map.setView([state.userLat, state.userLng], CONFIG.mapCityZoom, { animate: true });
+  if (state.userLocationMarker) { state.userLocationMarker.remove(); state.userLocationMarker = null; }
+  const blueDotIcon = L.divIcon({
+    className: '',
+    html: '<div class="user-location-dot" aria-label="Your location"><div class="user-location-pulse"></div></div>',
+    iconSize:   [18, 18],
+    iconAnchor: [9, 9],
+  });
+  state.userLocationMarker = L.marker([state.userLat, state.userLng], {
+    icon: blueDotIcon, zIndexOffset: 1000, interactive: false,
+  }).addTo(state.map);
+}
+
+function fitMapToPins() {
+  if (!state.map || state.mapPins.size === 0) return;
+  const coords = [];
+  state.mapPins.forEach(marker => coords.push(marker.getLatLng()));
+  if (state.userLat && state.userLng) coords.push(L.latLng(state.userLat, state.userLng));
+  if (coords.length > 0) {
+    state.map.fitBounds(L.latLngBounds(coords), { padding: [40, 40], maxZoom: 15 });
+  }
 }
 
 function renderPins(restaurants) {
