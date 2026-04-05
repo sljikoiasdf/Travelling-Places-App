@@ -317,13 +317,13 @@ function showNavChoiceSheet(restaurant) {
     return;
   }
 
-  const btnStyle = 'display:flex;align-items:center;gap:10px;width:100%;padding:16px;background:rgba(255,255,255,0.06);border:none;border-radius:12px;color:#EAE2D2;font-size:17px;font-weight:500;text-decoration:none;-webkit-tap-highlight-color:transparent;';
+  const btnStyle = 'display:block;width:100%;padding:16px;background:rgba(255,255,255,0.06);border:none;border-radius:12px;color:#EAE2D2;font-size:17px;font-weight:500;text-decoration:none;text-align:center;-webkit-tap-highlight-color:transparent;';
 
   sheet.innerHTML = approxLabel
-    + '<p style="font-size:15px;font-weight:600;color:#A8957C;text-align:center;margin-bottom:12px;">Open with</p>'
-    + '<a href="' + urls.apple + '" style="' + btnStyle + '"><span>\uD83D\uDDFA</span> Apple Maps</a>'
-    + '<a href="' + urls.google + '" style="' + btnStyle + 'margin-top:8px;" target="_blank" rel="noopener"><span>\uD83D\uDCCD</span> Google Maps</a>'
-    + (urls.streetView ? '<a href="' + urls.streetView + '" style="' + btnStyle + 'margin-top:8px;" target="_blank" rel="noopener"><span>\uD83D\uDCF7</span> Street View</a>' : '')
+    + '<p style="font-size:13px;font-weight:600;color:#A8957C;text-align:center;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.05em;">Open with</p>'
+    + '<a href="' + urls.apple + '" style="' + btnStyle + '">Apple Maps</a>'
+    + '<a href="' + urls.google + '" style="' + btnStyle + 'margin-top:8px;" target="_blank" rel="noopener">Google Maps</a>'
+    + (urls.streetView ? '<a href="' + urls.streetView + '" style="' + btnStyle + 'margin-top:8px;" target="_blank" rel="noopener">Street View</a>' : '')
     + '<button id="nav-choice-cancel" style="display:block;width:100%;padding:14px;margin-top:12px;background:none;border:1px solid rgba(255,255,255,0.1);border-radius:12px;color:#A8957C;font-size:15px;cursor:pointer;">Cancel</button>';
 
   overlay.classList.add('nav-choice-overlay--visible');
