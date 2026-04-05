@@ -153,9 +153,19 @@ function applyFiltersAndSearch() {
   results = sortRestaurants(results, state.sortOrder);
   state.filtered = results;
 
-  // For list rendering, apply map viewport bounds if available
+  // For list rendering, apply map viewport bounds if available.
+  // BUT skip the viewport filter when the user has expressed an explicit
+  // narrowing intent that may point outside the current map view —
+  // otherwise results get silently dropped (e.g. searching "Saen" from
+  // Melbourne matches Bangkok restaurants that then fail the viewport check).
+  const hasExplicitFilter =
+    (state.searchQuery && state.searchQuery.length >= 2) ||
+    !!state.activeFilters.city ||
+    state.viewMode === 'wishlist' ||
+    state.viewMode === 'visited';
+
   let listResults = results;
-  if (state.mapBounds) {
+  if (state.mapBounds && !hasExplicitFilter) {
     const { north, south, east, west } = state.mapBounds;
     listResults = results.filter(r => {
       if (!r.lat || !r.lng) return false;
