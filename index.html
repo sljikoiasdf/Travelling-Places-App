@@ -3,120 +3,149 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+  <!-- PWA meta tags — required for iOS standalone mode -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Thailand Food">
   <meta name="theme-color" content="#0E0E0E">
+
   <title>Thailand Food Guide</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-180.png">
+
+  <!-- Google Fonts: Playfair Display, DM Sans, Noto Sans Thai -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&family=Noto+Sans+Thai:wght@300;400;500;600&display=swap" rel="stylesheet">
-  <!-- Leaflet CSS—SRI omitted: SW opaque cache + SRI = silent block (BUG-001) -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+  <!-- App styles -->
   <link rel="stylesheet" href="styles.css">
-  <!-- Build 2 component CSS (split from styles.css —at 25KB limit) -->
-  <link rel="stylesheet" href="styles-b2.css">
 </head>
 <body>
 
+  <!-- App shell — full-screen fixed container -->
   <div class="app-shell" id="app">
 
-    <!-- App Header / Brand Bar -->
-    <header class="app-header" id="app-header" aria-label="Thailand Food Guide">
-      <div class="app-header__inner">
-        <div class="app-header__brand">
-          <svg class="app-header__logo" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-            <path d="M6 16 C6 22.627 10.477 28 16 28 C21.523 28 26 22.627 26 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-            <line x1="3" y1="16" x2="29" y2="16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            <path d="M13 6 L11 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            <path d="M19 4 L17 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-          </svg>
-          <div class="app-header__wordmark">
-            <span class="app-header__name">Thailand</span>
-            <span class="app-header__descriptor">Food Guide</span>
-          </div>
-        </div>
-        <div class="app-header__actions" aria-hidden="true"></div>
-      </div>
-    </header>
-
+    <!-- Main content area — fills between filter bar and nav -->
     <main class="app-content" id="app-content">
 
       <!-- LIST VIEW -->
-      <div class="view" id="view-list" role="main" aria-label="Restaurant list" aria-hidden="true">
+      <div class="view"
+           id="view-list"
+           role="main"
+           aria-label="Restaurant list"
+           aria-hidden="true">
 
-        <div class="search-bar">
-          <input class="search-input" id="search-input" type="search" placeholder="Search restaurants…" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Search restaurants">
-          <button class="search-clear-btn" id="search-clear-btn" aria-label="Clear search" hidden>✕</button>
-        </div>
-        <div class="view-toggle" id="view-toggle" role="group" aria-label="View mode">
-          <button class="view-toggle__btn view-toggle__btn--active" data-mode="all">All</button>
-          <button class="view-toggle__btn" data-mode="wishlist">♡ Wishlist</button>
-          <button class="view-toggle__btn" data-mode="visited">✓ Visited</button>
-        </div>
-
+        <!-- Filter bar — sticky within the list view scroll container -->
         <div class="filter-bar" id="filter-bar">
-          <div class="filter-chips" id="filter-chips" role="group" aria-label="Filters">
-            <!-- injected by JS -->
+          <div class="filter-chips"
+               id="filter-chips"
+               role="group"
+               aria-label="Filters">
           </div>
-          <button class="sort-btn" id="sort-btn" aria-label="Sort">⇅</button>
         </div>
 
         <div class="view__content">
-          <p class="location-notice" id="location-notice" hidden></p>
-          <div class="pull-indicator" id="pull-indicator"><div class="pull-indicator__spinner"></div></div>
+
+          <!-- Skeleton cards shown while loading -->
           <div class="card-list" id="skeleton-list" aria-hidden="true">
-            <div class="skeleton-card"><div class="skeleton-card__photo skeleton"></div><div class="skeleton-card__line skeleton"></div><div class="skeleton-card__line--short skeleton"></div></div>
-            <div class="skeleton-card"><div class="skeleton-card__photo skeleton"></div><div class="skeleton-card__line skeleton"></div><div class="skeleton-card__line--short skeleton"></div></div>
-            <div class="skeleton-card"><div class="skeleton-card__photo skeleton"></div><div class="skeleton-card__line skeleton"></div><div class="skeleton-card__line--short skeleton"></div></div>
+            <div class="skeleton-card">
+              <div class="skeleton-card__photo skeleton"></div>
+              <div class="skeleton-card__line skeleton"></div>
+              <div class="skeleton-card__line--short skeleton"></div>
+            </div>
+            <div class="skeleton-card">
+              <div class="skeleton-card__photo skeleton"></div>
+              <div class="skeleton-card__line skeleton"></div>
+              <div class="skeleton-card__line--short skeleton"></div>
+            </div>
+            <div class="skeleton-card">
+              <div class="skeleton-card__photo skeleton"></div>
+              <div class="skeleton-card__line skeleton"></div>
+              <div class="skeleton-card__line--short skeleton"></div>
+            </div>
           </div>
-          <div class="card-list" id="card-list" role="list" aria-live="polite" aria-label="Restaurants" hidden></div>
+
+          <!-- Restaurant cards injected by JS -->
+          <div class="card-list"
+               id="card-list"
+               role="list"
+               aria-live="polite"
+               aria-label="Restaurants"
+               hidden>
+          </div>
+
+          <!-- Empty state -->
           <div class="empty-state" id="empty-state" hidden>
-            <svg class="empty-state__icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            <svg class="empty-state__icon"
+                 aria-hidden="true"
+                 viewBox="0 0 24 24"
+                 fill="none"
+                 stroke="currentColor"
+                 stroke-width="1.5">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
             <p class="empty-state__title">No restaurants found</p>
             <p class="empty-state__message">Try adjusting your filters or switch to a different city.</p>
           </div>
+
         </div>
       </div>
 
-      <!-- MAP VIEW — default active -->
-      <div class="view view--active" id="view-map" role="main" aria-label="Restaurant map">
+      <!-- MAP VIEW (default active) -->
+      <div class="view view--active"
+           id="view-map"
+           role="main"
+           aria-label="Restaurant map">
         <div class="map-container" id="map"></div>
       </div>
 
-      <!-- DETAIL VIEW — full-screen routed page -->
-      <div class="view-detail" id="view-detail" role="main" aria-label="Restaurant detail" aria-hidden="true">
-        <header class="detail-header">
-          <button class="detail-back-btn" id="detail-back" aria-label="Go back">
-            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="24" height="24">
+      <!-- DETAIL VIEW — slides over map/list -->
+      <div class="view-detail"
+           id="view-detail"
+           role="main"
+           aria-label="Restaurant detail"
+           aria-hidden="true">
+        <div class="view-detail__header">
+          <button class="view-detail__back" id="detail-back" aria-label="Go back">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="15 18 9 12 15 6"/>
             </svg>
           </button>
-          <h1 class="detail-header__title" id="detail-title"></h1>
-        </header>
-        <div class="detail-body" id="detail-body"></div>
+          <h1 class="view-detail__title" id="detail-title"></h1>
+        </div>
+        <div class="view-detail__body" id="detail-body">
+          <!-- Content injected by detail.js -->
+        </div>
       </div>
 
     </main>
 
-    <!-- Bottom navigation — Map first, List second -->
-    <nav class="nav-bar" id="nav-bar" role="navigation" aria-label="Main navigation">
+    <!-- Bottom navigation -->
+    <nav class="nav-bar"
+         id="nav-bar"
+         role="navigation"
+         aria-label="Main navigation">
 
-      <button class="nav-item nav-item--active" id="nav-map" data-view="map" aria-label="Map view" aria-pressed="true">
-        <svg class="nav-item__icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/>
-          <line x1="9" y1="3" x2="9" y2="18"/>
-          <line x1="15" y1="6" x2="15" y2="21"/>
-        </svg>
-        <span class="nav-item__label">Map</span>
-      </button>
-
-      <button class="nav-item" id="nav-list" data-view="list" aria-label="List view" aria-pressed="false">
-        <svg class="nav-item__icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <button class="nav-item"
+              id="nav-list"
+              data-view="list"
+              aria-label="List view"
+              aria-pressed="false">
+        <svg class="nav-item__icon"
+             aria-hidden="true"
+             viewBox="0 0 24 24"
+             fill="none"
+             stroke="currentColor"
+             stroke-width="2"
+             stroke-linecap="round"
+             stroke-linejoin="round">
           <line x1="8" y1="6" x2="21" y2="6"/>
           <line x1="8" y1="12" x2="21" y2="12"/>
           <line x1="8" y1="18" x2="21" y2="18"/>
@@ -127,31 +156,56 @@
         <span class="nav-item__label">List</span>
       </button>
 
-    </nav>
+      <button class="nav-item nav-item--active"
+              id="nav-map"
+              data-view="map"
+              aria-label="Map view"
+              aria-pressed="true">
+        <svg class="nav-item__icon"
+             aria-hidden="true"
+             viewBox="0 0 24 24"
+             fill="none"
+             stroke="currentColor"
+             stroke-width="2"
+             stroke-linecap="round"
+             stroke-linejoin="round">
+          <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/>
+          <line x1="9" y1="3" x2="9" y2="18"/>
+          <line x1="15" y1="6" x2="15" y2="21"/>
+        </svg>
+        <span class="nav-item__label">Map</span>
+      </button>
 
-    <!-- Toast notifications (inside app-shell for detail-page positioning) -->
-    <div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="true"></div>
+    </nav>
 
   </div><!-- /.app-shell -->
 
-  <div class="nav-choice-overlay" id="nav-choice-overlay" role="dialog" aria-modal="true">
+  <!-- Navigation choice sheet overlay -->
+  <div class="nav-choice-overlay" id="nav-choice-overlay">
     <div class="nav-choice-sheet" id="nav-choice-sheet"></div>
   </div>
-  <div class="sort-sheet-overlay" id="sort-sheet-overlay" role="dialog" aria-modal="true">
+
+  <!-- Sort sheet overlay -->
+  <div class="sort-sheet-overlay" id="sort-sheet-overlay">
     <div class="sort-sheet" id="sort-sheet"></div>
   </div>
 
-  <!-- Leaflet JS —SRI omitted: BUG-001 -->
+  <!-- Toast notifications -->
+  <div class="toast-container"
+       id="toast-container"
+       aria-live="polite"
+       aria-atomic="true"></div>
+
+  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <!-- Supabase -->
+
+  <!-- Supabase JS client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- App — split into modules (each under 25KB) for maintainability -->
-  <script src="app-config.js" defer></script>
-  <script src="app-data.js" defer></script>
-  <script src="app-ui.js" defer></script>
-  <script src="app-list.js" defer></script>
-  <script src="app-main.js" defer></script>
-  <!-- SW -->
+
+  <!-- App — ES modules -->
+  <script type="module" src="app.js"></script>
+
+  <!-- Service worker registration -->
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').catch(console.error);
