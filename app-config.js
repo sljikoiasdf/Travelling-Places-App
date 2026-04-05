@@ -19,10 +19,11 @@ const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ── App config ────────────────────────────────────────────── */
 const CONFIG = {
-  mapDefaultLat:  13.7563,
-  mapDefaultLng:  100.5018,
-  mapDefaultZoom: 12,
+  mapFallbackLat:  0,            // Neutral world view — overridden by GPS or city pick
+  mapFallbackLng:  0,
+  mapFallbackZoom: 2,
   mapPinZoom:     15,
+  mapCityZoom:    12,            // Zoom level when user picks a city
   cacheVersion:   'v1',
   cacheTTL:       24 * 60 * 60 * 1000,
   timezone:       'Asia/Bangkok',
@@ -49,9 +50,19 @@ const state = {
   locationStatus: 'requesting', // 'requesting' | 'granted' | 'denied' | 'unavailable'
   sortOrder:      'rating',     // 'nearest' | 'rating' — 'nearest' only when GPS granted
   nearMeRadiusM:  2000,         // Near me filter radius in metres (MISSING-16)
+  userLocationMarker: null,     // Leaflet marker for user's blue dot
+  locationManual: false,        // true when user set location via city/address picker
   // ── Build 2: Search & view mode (MISSING-07, B2_16) ─────
   searchQuery:    '',           // Free-text search query
   viewMode:       'all',        // 'all' | 'wishlist' | 'visited'
+};
+
+/* ── City centre coordinates (for location picker fallback) ── */
+const CITY_CENTRES = {
+  melbourne:  { lat: -37.8136, lng: 144.9631 },
+  bangkok:    { lat: 13.7563,  lng: 100.5018 },
+  chiang_mai: { lat: 18.7883,  lng: 98.9853  },
+  koh_chang:  { lat: 12.0500,  lng: 102.3400 },
 };
 
 /* ── DOM references ────────────────────────────────────────── */
