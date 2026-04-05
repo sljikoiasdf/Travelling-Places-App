@@ -341,7 +341,6 @@ function applyView(view) {
 /**
  * reviewLinksHTML — fetches review links from restaurant_sources table.
  * No tier filter — shows all sources that have a URL.
- * Sources without URLs are shown as attribution text ("Recommended by...").
  * Injected async into the Reviews section placeholder.
  * @param {string} restaurantId
  * @returns {Promise<string>} HTML string (empty if no sources at all)
@@ -349,39 +348,30 @@ function applyView(view) {
 async function reviewLinksHTML(restaurantId) {
   const { data: sources, error } = await db
     .from('restaurant_sources')
-    .select('url, excerpt, language, source_tier, sources(name)')
+    .select('url, excerpt, language, source_tier, rating_score, sources(name)')
     .eq('restaurant_id', restaurantId)
+    .not('url', 'is', null)
     .order('language')
     .limit(10);
 
   if (error || !sources || sources.length === 0) return '';
 
-  // Split into linkable sources and attribution-only sources
-  const withUrl    = sources.filter(s => s.url);
-  const withoutUrl = sources.filter(s => !s.url && s.sources?.name);
-
   let html = '';
 
-  // Render clickable review cards
-  if (withUrl.length > 0) {
-    html += withUrl.map(s => {
-      const label = s.sources?.name || 'Review';
-      const excerpt = s.excerpt
-        ? `<span class="review-card__desc">${escapeHTML(s.excerpt)}</span>`
-        : '';
-      return `<a href="${escapeHTML(s.url)}" class="review-card" target="_blank" rel="noopener noreferrer">
-        <span class="review-card__source">${escapeHTML(label)}</span>
-        ${excerpt}
-        <span class="review-card__arrow" aria-hidden="true">&#8250;</span>
-      </a>`;
-    }).join('');
-  }
-
-  // Render attribution for sources without direct links
-  if (withoutUrl.length > 0) {
-    const names = withoutUrl.map(s => s.sources.name);
-    html += `<p class="review-links-section__attribution">Recommended by ${escapeHTML(names.join(', '))}</p>`;
-  }
+  html += sources.map(s => {
+    const label = s.sources?.name || 'Review';
+    const rating = s.rating_score ? ` \u00b7 ${s.rating_score}/5` : '';
+    const desc = s.excerpt
+      ? `<span class="review-card__desc">${escapeHTML(s.excerpt)}</span>`
+      : (s.source_tier === 'local_platform'
+        ? `<span class="review-card__desc">Thai language reviews and ratings</span>`
+        : '');
+    return `<a href="${escapeHTML(s.url)}" class="review-card" target="_blank" rel="noopener noreferrer">
+      <span class="review-card__source">${escapeHTML(label)}${rating}</span>
+      ${desc}
+      <span class="review-card__arrow" aria-hidden="true">&#8250;</span>
+    </a>`;
+  }).join('');
 
   return html;
 }

@@ -98,17 +98,22 @@ function renderDetailPage(r) {
   dom.detailBody.scrollTop = 0;
   attachPersonalNotesListener(r.id);
 
-  // Pass 2 (async): fetch and inject additional review links from restaurant_sources
+  // Pass 2 (async): fetch and inject review links from restaurant_sources
   reviewLinksHTML(r.id).then(html => {
     const placeholder = document.getElementById('review-links-placeholder');
     if (!placeholder) return;
     if (html) {
-      placeholder.outerHTML = html;
+      // Insert cards into the .review-cards container
+      const cardsContainer = document.querySelector('.review-cards');
+      if (cardsContainer) {
+        cardsContainer.innerHTML = html;
+      }
+      placeholder.remove();
     } else {
       placeholder.remove();
-      // If the review section wrapper is now empty (no static links either), remove it
+      // If no review cards and no quote, remove the entire section
       const section = document.querySelector('.review-links-section');
-      if (section && section.querySelectorAll('.review-card, .source-attribution').length === 0) {
+      if (section && !section.querySelector('.source-attribution')) {
         section.remove();
       }
     }

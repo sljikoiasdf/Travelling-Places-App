@@ -201,12 +201,12 @@ function showNavChoiceSheet(restaurant) {
     ${approxLabel}
     <p class="nav-choice-sheet__title">Open with</p>
     <a href="${urls.apple}" class="nav-choice-btn">
-      Apple Maps
+      <span>🗺</span> Apple Maps
     </a>
     <a href="${urls.google}" class="nav-choice-btn" target="_blank" rel="noopener">
-      Google Maps
+      <span>📍</span> Google Maps
     </a>
-    ${urls.streetView ? `<a href="${urls.streetView}" class="street-view-link" target="_blank" rel="noopener">Street View</a>` : ''}
+    ${urls.streetView ? `<a href="${urls.streetView}" class="street-view-link" target="_blank" rel="noopener">📷 Street View</a>` : ''}
     <button class="nav-choice-cancel" id="nav-choice-cancel">Cancel</button>
   `;
 
@@ -372,47 +372,11 @@ function attachPersonalNotesListener(restaurantId) {
 function contactRowHTML(_restaurant) { return ''; }
 
 /* ── Reviews section HTML builder ───────────────────────── */
-// Combines all review sources into one "Reviews" section:
-// - wongnai_url (Thai restaurant review platform)
-// - source_url (AGFG, Broadsheet, Michelin etc — the page that led to inclusion)
-// - source_quote_th (Thai-language quote from source)
-// - Async placeholder for restaurant_sources table entries
-// Omitted entirely if no review data exists AND async placeholder not needed.
+// All review links live in the restaurant_sources table.
+// This renders the section shell; the async reviewLinksHTML() populates it.
+// source_quote_th (if present) is rendered inline as an editorial quote.
 
 function reviewSectionHTML(restaurant) {
-  const cards = [];
-
-  // Wongnai — Thai restaurant review site
-  if (restaurant.wongnai_url) {
-    const rating = restaurant.wongnai_rating
-      ? ` · ${restaurant.wongnai_rating}/5`
-      : '';
-    cards.push(`<a href="${escapeHTML(restaurant.wongnai_url)}" class="review-card" target="_blank" rel="noopener noreferrer">
-      <span class="review-card__source">Wongnai${rating}</span>
-      <span class="review-card__desc">Thai language reviews and ratings</span>
-      <span class="review-card__arrow" aria-hidden="true">&#8250;</span>
-    </a>`);
-  }
-
-  // Source URL — the listing or guide page (AGFG, Broadsheet, Michelin etc)
-  if (restaurant.source_url) {
-    let sourceName = 'Source listing';
-    const url = restaurant.source_url.toLowerCase();
-    if (url.includes('agfg'))             sourceName = 'AGFG';
-    else if (url.includes('broadsheet'))  sourceName = 'Broadsheet';
-    else if (url.includes('michelin'))    sourceName = 'Michelin Guide';
-    else if (url.includes('timeout'))     sourceName = 'Time Out';
-    else if (url.includes('eater'))       sourceName = 'Eater';
-    else {
-      try { sourceName = new URL(restaurant.source_url).hostname.replace(/^www\./, ''); } catch (_) {}
-    }
-    cards.push(`<a href="${escapeHTML(restaurant.source_url)}" class="review-card" target="_blank" rel="noopener noreferrer">
-      <span class="review-card__source">${escapeHTML(sourceName)}</span>
-      <span class="review-card__desc">Listed on ${escapeHTML(sourceName)}</span>
-      <span class="review-card__arrow" aria-hidden="true">&#8250;</span>
-    </a>`);
-  }
-
   // Source quote (Thai) — editorial quote about the restaurant
   const quoteHTML = restaurant.source_quote_th
     ? `<div class="source-attribution">
@@ -420,17 +384,12 @@ function reviewSectionHTML(restaurant) {
       </div>`
     : '';
 
-  // Async placeholder for restaurant_sources entries
+  // Async placeholder — reviewLinksHTML() fills this with cards from restaurant_sources
   const asyncPlaceholder = `<div id="review-links-placeholder"></div>`;
-
-  // If nothing at all, still render the placeholder for async content
-  if (cards.length === 0 && !restaurant.source_quote_th) {
-    return asyncPlaceholder;
-  }
 
   return `<section class="review-links-section">
     <div class="review-links-section__heading">Reviews</div>
-    <div class="review-cards">${cards.join('')}</div>
+    <div class="review-cards"></div>
     ${quoteHTML}
     ${asyncPlaceholder}
   </section>`;

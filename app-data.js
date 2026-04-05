@@ -5,7 +5,7 @@
 const IDB_NAME    = 'thailand-food';
 const IDB_VERSION = 1;
 const IDB_STORE   = 'cache';
-const CACHE_KEY   = 'restaurants_v4';
+const CACHE_KEY   = 'restaurants_v5';
 
 function openIDB() {
   return new Promise((resolve, reject) => {
@@ -169,11 +169,11 @@ async function refreshFromNetwork() {
           location_precision, lat, lng,
           cuisine_types, price_range, is_halal, is_vegetarian_friendly,
           michelin_stars, michelin_bib,
-          opening_hours, phone, website, wongnai_url, tagline,
+          opening_hours, phone, website, tagline,
           photos, identification_photo_url, dishes,
           cart_identifier, location_notes,
           nearby_landmark_en, landmark_latitude, landmark_longitude,
-          legacy_note, source_quote_th, source_url, wongnai_rating,
+          legacy_note, source_quote_th, wongnai_rating,
           created_at
         `)
         .order('wongnai_rating', { ascending: false, nullsFirst: false })
