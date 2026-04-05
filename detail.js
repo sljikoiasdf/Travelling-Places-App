@@ -98,16 +98,12 @@ function statusLineHTML(restaurant) {
     + '</div>';
 }
 
-/* ── Area · cuisine meta line ──────────────────────────── */
+/* ── Address line (street address, readable muted text) ────── */
 
-function metaLineHTML(restaurant) {
-  const bits = [];
-  if (restaurant.area) bits.push(escapeHTML(restaurant.area.replace(/_/g, ' ')));
-  else if (restaurant.city) bits.push(escapeHTML(cityLabel(restaurant.city)));
-  if (restaurant.cuisine_type) bits.push(escapeHTML(restaurant.cuisine_type.replace(/_/g, ' ')));
-  if (bits.length === 0) return '';
-  return '<div style="padding:0 16px;font-size:13px;color:#6B5F52;text-transform:uppercase;letter-spacing:0.08em;font-weight:500;">'
-    + bits.join(' <span style="color:#3A342B;">·</span> ')
+function addressLineHTML(restaurant) {
+  if (!restaurant.address_en) return '';
+  return '<div style="padding:0 16px;font-size:14px;color:#8A7F6F;line-height:1.4;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">'
+    + escapeHTML(restaurant.address_en)
     + '</div>';
 }
 
@@ -176,9 +172,6 @@ function contactBodyHTML(restaurant) {
 
 function addressBodyHTML(restaurant) {
   const bits = [];
-  if (restaurant.address_en) {
-    bits.push('<p style="font-size:14px;color:#EAE2D2;line-height:1.5;margin:0 0 8px;">' + escapeHTML(restaurant.address_en) + '</p>');
-  }
   if (restaurant.nearby_landmark_en) {
     bits.push('<p style="font-size:13px;color:#A8957C;line-height:1.4;margin:0;">Near: ' + escapeHTML(restaurant.nearby_landmark_en) + '</p>');
   }
@@ -411,17 +404,20 @@ function renderDetailPage(r) {
     + (r.legacy_note ? '<div style="padding-left:18px;font-size:12px;color:#6B5F52;margin-top:2px;">' + escapeHTML(r.legacy_note) + '</div>' : '')
     + '</div>';
 
+  const addressLine = addressLineHTML(r);
+  const statusLine = statusLineHTML(r);
+
   dom.detailBody.innerHTML = '<div class="detail-body__inner" style="padding-bottom:24px;">'
     // Editorial header
     + editorialHeaderHTML
-    // Meta: area · cuisine
-    + '<div style="margin-top:6px;">' + metaLineHTML(r) + '</div>'
+    // Address (street address, muted readable text)
+    + (addressLine ? '<div style="margin-top:4px;">' + addressLine + '</div>' : '')
     // Status line: open · closes · distance · price
-    + '<div style="margin-top:6px;">' + statusLineHTML(r) + '</div>'
+    + (statusLine ? '<div style="margin-top:2px;">' + statusLine + '</div>' : '')
     // Primary CTA
-    + '<div style="margin-top:14px;">' + directionsCTAHTML(r) + '</div>'
+    + '<div style="margin-top:16px;">' + directionsCTAHTML(r) + '</div>'
     // Description (150-word editorial body)
-    + (descriptionHTML ? '<div style="margin-top:18px;">' + descriptionHTML + '</div>' : '')
+    + (descriptionHTML ? '<div style="margin-top:16px;">' + descriptionHTML + '</div>' : '')
     // Tagline (if present)
     + (taglineHTML ? '<div style="margin-top:10px;">' + taglineHTML + '</div>' : '')
     // Review chips
