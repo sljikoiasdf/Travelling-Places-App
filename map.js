@@ -88,8 +88,8 @@ function centreMapOnUser(zoom) {
   const blueDotIcon = L.divIcon({
     className: '',
     html: `<div class="user-location-dot" aria-label="Your location"><div class="user-location-pulse"></div></div>`,
-    iconSize:   [18, 18],
-    iconAnchor: [9, 9],
+    iconSize:   [22, 22],
+    iconAnchor: [11, 11],
   });
 
   state.userLocationMarker = L.marker([state.userLat, state.userLng], {
@@ -160,8 +160,8 @@ function renderPins(restaurants) {
     const icon = L.divIcon({
       className: tier === 'close' ? 'map-dot-wrapper map-dot-wrapper--labelled' : 'map-dot-wrapper',
       html,
-      iconSize:   [12, 12],
-      iconAnchor: [6, 6],
+      iconSize:   tier === 'close' ? [200, 28] : [20, 20],
+      iconAnchor: tier === 'close' ? [10, 14] : [10, 10],
     });
 
     const marker = L.marker([r.lat, r.lng], { icon }).addTo(state.map);

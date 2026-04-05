@@ -390,3 +390,33 @@
 .filter-chip--period {
   /* meal period chips — no visual difference, semantic marker */
 }
+
+/* === MAP PIN SIZE OVERRIDES (bigger dots + labels at initial zoom) === */
+
+.map-dot {
+  width: 20px;
+  height: 20px;
+  border-width: 2.5px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.3);
+}
+
+.map-dot__label {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  background: rgba(255,255,255,0.95);
+}
+
+.user-location-dot {
+  width: 22px;
+  height: 22px;
+  box-shadow: 0 0 0 3px rgba(0,122,255,0.25), 0 1px 4px rgba(0,0,0,0.2);
+}
+
+.map-legend__dot {
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+}
