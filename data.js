@@ -162,9 +162,8 @@ async function refreshFromNetwork(fetchLat, fetchLng) {
     await setCached(CACHE_KEY, state.restaurants);
     if (_applyFiltersAndSearch) _applyFiltersAndSearch();
 
-    if (state.activeView === 'map' && state.map) {
-      state.map.invalidateSize();
-      if (_renderPins) _renderPins(state.filtered);
+    if (state.activeView === 'map' && state.map && _renderPins) {
+      _renderPins(state.filtered);
     }
 
   } catch (err) {
