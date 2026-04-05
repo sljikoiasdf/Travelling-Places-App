@@ -60,53 +60,6 @@ function navUrls(restaurant) {
   return { apple, google, streetView };
 }
 
-/* ── Navigation choice sheet ────────────────────────────────── */
-
-function showNavChoiceSheet(restaurant) {
-  const urls = navUrls(restaurant);
-  const dest = resolveNavDestination(restaurant);
-  const approxLabel = dest?.isApproximate
-    ? `<p class="nav-choice-sheet__title">${escapeHTML(dest.label || 'Location approximate')}</p>` : '';
-
-  const sheetContent = `
-    ${approxLabel}
-    <p class="nav-choice-sheet__title">Open with</p>
-    <a href="${urls.apple}" class="nav-choice-btn">
-      <span>🗺</span> Apple Maps
-    </a>
-    <a href="${urls.google}" class="nav-choice-btn" target="_blank" rel="noopener">
-      <span>📍</span> Google Maps
-    </a>
-    ${urls.streetView ? `<a href="${urls.streetView}" class="street-view-link" target="_blank" rel="noopener">📷 Street View</a>` : ''}
-    <button class="nav-choice-cancel" id="nav-choice-cancel">Cancel</button>
-  `;
-
-  const overlay = dom.navChoiceOverlay || document.getElementById('nav-choice-overlay');
-  const sheet   = dom.navChoiceSheet   || document.getElementById('nav-choice-sheet');
-  if (!overlay || !sheet) {
-    window.location.href = urls.apple;
-    return;
-  }
-
-  sheet.innerHTML = sheetContent;
-  overlay.classList.add('nav-choice-overlay--visible');
-
-  function dismiss(e) {
-    if (e.target === overlay) {
-      overlay.classList.remove('nav-choice-overlay--visible');
-      overlay.removeEventListener('click', dismiss);
-    }
-  }
-  overlay.addEventListener('click', dismiss);
-
-  const cancelBtn = document.getElementById('nav-choice-cancel');
-  if (cancelBtn) {
-    cancelBtn.addEventListener('click', () => {
-      overlay.classList.remove('nav-choice-overlay--visible');
-    }, { once: true });
-  }
-}
-
 /* ── Dishes detail ──────────────────────────────────────────── */
 
 function dishesDetailHTML(dishes) {
@@ -124,6 +77,54 @@ function dishesDetailHTML(dishes) {
     <h3 class="dishes-section__heading">Known for</h3>
     ${items}
   </section>`;
+}
+
+/* ── Specialities ───────────────────────────────────────────── */
+
+function specialitiesHTML(specialities) {
+  if (!specialities || !Array.isArray(specialities) || specialities.length === 0) return '';
+  const chips = specialities.map(s => {
+    const label = s.replace(/_/g, ' ');
+    return `<span style="display:inline-block;padding:4px 10px;background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.3);border-radius:20px;font-size:13px;color:#C9A84C;font-weight:500;white-space:nowrap;">${escapeHTML(label)}</span>`;
+  }).join('');
+  return `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:0 16px;">${chips}</div>`;
+}
+
+/* ── Ratings row ────────────────────────────────────────────── */
+
+function ratingsHTML(restaurant) {
+  const items = [];
+
+  if (restaurant.google_rating) {
+    const count = restaurant.google_review_count ? ` (${restaurant.google_review_count})` : '';
+    items.push(`<span style="display:inline-flex;align-items:center;gap:4px;font-size:13px;color:#A8957C;"><span style="color:#FBBC04;">★</span> ${restaurant.google_rating}${count} Google</span>`);
+  }
+
+  if (restaurant.tripadvisor_rating) {
+    const count = restaurant.tripadvisor_review_count ? ` (${restaurant.tripadvisor_review_count})` : '';
+    items.push(`<span style="display:inline-flex;align-items:center;gap:4px;font-size:13px;color:#A8957C;"><span style="color:#34E0A1;">●</span> ${restaurant.tripadvisor_rating}${count} TripAdvisor</span>`);
+  }
+
+  if (restaurant.wongnai_rating) {
+    items.push(`<span style="display:inline-flex;align-items:center;gap:4px;font-size:13px;color:#A8957C;"><span style="color:#ED1C24;">●</span> ${restaurant.wongnai_rating} Wongnai</span>`);
+  }
+
+  if (items.length === 0) return '';
+  return `<div style="display:flex;flex-wrap:wrap;gap:12px;padding:0 16px;">${items.join('')}</div>`;
+}
+
+/* ── Dietary badges ─────────────────────────────────────────── */
+
+function dietaryBadgesHTML(restaurant) {
+  const badges = [];
+  if (restaurant.is_halal) {
+    badges.push(`<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:rgba(46,139,87,0.15);border:1px solid rgba(46,139,87,0.4);border-radius:20px;font-size:12px;color:#2E8B57;font-weight:600;">☪ Halal</span>`);
+  }
+  if (restaurant.is_vegetarian_friendly) {
+    badges.push(`<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:rgba(76,175,80,0.15);border:1px solid rgba(76,175,80,0.4);border-radius:20px;font-size:12px;color:#4CAF50;font-weight:600;">🌿 Vegetarian friendly</span>`);
+  }
+  if (badges.length === 0) return '';
+  return `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:0 16px;">${badges.join('')}</div>`;
 }
 
 /* ── Source attribution ─────────────────────────────────────── */
@@ -148,20 +149,23 @@ async function reviewLinksHTML(restaurantId) {
 
   if (error || !sources || sources.length === 0) return '';
 
-  return sources.map(s => {
-    const label = s.sources?.name || 'Review';
-    const rating = s.rating_score ? ` \u00b7 ${s.rating_score}/5` : '';
-    const desc = s.excerpt
-      ? `<span class="review-card__desc">${escapeHTML(s.excerpt)}</span>`
-      : (s.source_tier === 'local_platform'
-        ? `<span class="review-card__desc">Thai language reviews and ratings</span>`
-        : '');
-    return `<a href="${escapeHTML(s.url)}" class="review-card" target="_blank" rel="noopener noreferrer">
-      <span class="review-card__source">${escapeHTML(label)}${rating}</span>
-      ${desc}
-      <span class="review-card__arrow" aria-hidden="true">&#8250;</span>
-    </a>`;
-  }).join('');
+  return `<div style="padding:0 16px;display:flex;flex-direction:column;gap:8px;">
+    <h3 style="font-size:13px;font-weight:600;color:#6B5F52;text-transform:uppercase;letter-spacing:0.08em;">Sources &amp; Reviews</h3>
+    ${sources.map(s => {
+      const label = s.sources?.name || 'Review';
+      const rating = s.rating_score ? ` \u00b7 ${s.rating_score}/5` : '';
+      const desc = s.excerpt
+        ? `<span class="review-card__desc">${escapeHTML(s.excerpt)}</span>`
+        : (s.source_tier === 'local_platform'
+          ? `<span class="review-card__desc">Thai language reviews and ratings</span>`
+          : '');
+      return `<a href="${escapeHTML(s.url)}" class="review-card" target="_blank" rel="noopener noreferrer">
+        <span class="review-card__source">${escapeHTML(label)}${rating}</span>
+        ${desc}
+        <span class="review-card__arrow" aria-hidden="true">&#8250;</span>
+      </a>`;
+    }).join('')}
+  </div>`;
 }
 
 /* ── Contact row ────────────────────────────────────────────── */
@@ -178,11 +182,40 @@ function contactRowHTML(restaurant) {
   }
 
   if (restaurant.website) {
-    items.push(`<a class="contact-link" href="${escapeHTML(restaurant.website)}" target="_blank" rel="noopener noreferrer">Website ↗</a>`);
+    items.push(`<a class="contact-link" href="${escapeHTML(restaurant.website)}" target="_blank" rel="noopener noreferrer">🌐 Website</a>`);
+  }
+
+  if (restaurant.line_id) {
+    items.push(`<span class="contact-link">LINE: ${escapeHTML(restaurant.line_id)}</span>`);
   }
 
   if (items.length === 0) return '';
   return `<div class="contact-row">${items.join('')}</div>`;
+}
+
+/* ── Directions buttons (Apple Maps + Google Maps side by side) ── */
+
+function directionsButtonsHTML(restaurant) {
+  const urls = navUrls(restaurant);
+  const dest = resolveNavDestination(restaurant);
+
+  const approxNote = dest?.isApproximate
+    ? `<p style="font-size:12px;color:#6B5F52;font-style:italic;margin-bottom:8px;text-align:center;">${escapeHTML(dest.label || 'Location approximate')}</p>`
+    : '';
+
+  const btnBase = 'display:flex;align-items:center;justify-content:center;gap:6px;flex:1;padding:12px 8px;min-height:48px;border-radius:12px;font-size:15px;font-weight:600;text-decoration:none;transition:opacity 150ms;';
+
+  const appleBtnStyle = `${btnBase}background:#C9A84C;color:#0E0E0E;`;
+  const googleBtnStyle = `${btnBase}background:#222222;color:#EAE2D2;border:1px solid rgba(255,255,255,0.07);`;
+
+  return `<div style="padding:0 16px;">
+    ${approxNote}
+    <div style="display:flex;gap:8px;">
+      <a href="${urls.apple}" style="${appleBtnStyle}">🗺 Apple Maps</a>
+      <a href="${urls.google}" style="${googleBtnStyle}" target="_blank" rel="noopener">📍 Google Maps</a>
+    </div>
+    ${urls.streetView ? `<a href="${urls.streetView}" style="display:flex;align-items:center;justify-content:center;gap:4px;margin-top:8px;padding:8px;font-size:13px;color:#A8957C;text-decoration:none;" target="_blank" rel="noopener">📷 Street View</a>` : ''}
+  </div>`;
 }
 
 /* ── Open detail ────────────────────────────────────────────── */
@@ -228,17 +261,6 @@ function renderDetailPage(r) {
     r.city ? cityLabel(r.city) : null
   ].filter(Boolean).join(', ');
 
-  const addressParts = [];
-  if (r.location_notes) addressParts.push(escapeHTML(r.location_notes));
-  if (r.cart_identifier) addressParts.push(escapeHTML(r.cart_identifier));
-  if (r.nearby_landmark_en) addressParts.push(`Near: ${escapeHTML(r.nearby_landmark_en)}`);
-
-  // ── Directions button ──
-  const dest = resolveNavDestination(r);
-  const dirBtnHTML = dest
-    ? `<button class="detail__directions-btn" data-action="directions" data-restaurant-id="${r.id}">Get Directions</button>`
-    : `<button class="detail__directions-btn detail__directions-btn--disabled" data-action="directions" data-restaurant-id="${r.id}">Find on Maps</button>`;
-
   // ── Cuisine + price ──
   const cuisineDisplay = Array.isArray(r.cuisine_types)
     ? r.cuisine_types.map(c => c.replace(/_/g, ' ')).join(', ') : '';
@@ -256,13 +278,13 @@ function renderDetailPage(r) {
 
   // ── Michelin ──
   const michelinHTML = r.michelin_stars > 0
-    ? `<span class="detail__michelin">${'★'.repeat(r.michelin_stars)} Michelin Star${r.michelin_stars > 1 ? 's' : ''}</span>`
+    ? `<span class="detail__michelin">${'\u2605'.repeat(r.michelin_stars)} Michelin Star${r.michelin_stars > 1 ? 's' : ''}</span>`
     : r.michelin_bib ? `<span class="detail__michelin">Bib Gourmand</span>` : '';
 
   // ── Wishlist heart (small icon only) ──
   const wishHTML = personal.is_wishlisted
-    ? `<button class="detail__heart detail__heart--active" data-action="wishlist" data-id="${r.id}" aria-label="Remove from wishlist" aria-pressed="true">♥</button>`
-    : `<button class="detail__heart" data-action="wishlist" data-id="${r.id}" aria-label="Add to wishlist" aria-pressed="false">♡</button>`;
+    ? `<button class="detail__heart detail__heart--active" data-action="wishlist" data-id="${r.id}" aria-label="Remove from wishlist" aria-pressed="true">\u2665</button>`
+    : `<button class="detail__heart" data-action="wishlist" data-id="${r.id}" aria-label="Add to wishlist" aria-pressed="false">\u2661</button>`;
 
   // ── Distance ──
   const detailPrecision = r.location_precision || 'no_location';
@@ -273,6 +295,23 @@ function renderDetailPage(r) {
     const fd = formatDistance(r._distanceMetres, detailPrecision);
     if (fd) distText = (detailPrecision === 'approximate' ? '~' : '') + fd;
   }
+
+  // ── Address lines ──
+  const addressLines = [];
+  if (r.address_en) addressLines.push(escapeHTML(r.address_en));
+  if (r.location_notes) addressLines.push(escapeHTML(r.location_notes));
+  if (r.cart_identifier) addressLines.push(escapeHTML(r.cart_identifier));
+  if (r.nearby_landmark_en) addressLines.push(`Near: ${escapeHTML(r.nearby_landmark_en)}`);
+
+  // ── Tagline ──
+  const taglineHTML = r.tagline
+    ? `<p style="padding:0 16px;font-size:17px;color:#A8957C;font-style:italic;line-height:1.5;">${escapeHTML(r.tagline)}</p>`
+    : '';
+
+  // ── Description ──
+  const descriptionHTML = r.description_en
+    ? `<p style="padding:0 16px;font-size:16px;color:#EAE2D2;line-height:1.6;">${escapeHTML(r.description_en)}</p>`
+    : '';
 
   dom.detailBody.innerHTML = `
     <div class="detail-body__inner">
@@ -290,26 +329,37 @@ function renderDetailPage(r) {
 
       ${michelinHTML}
 
+      ${taglineHTML}
+
       <div class="detail-address">
         ${areaCity ? `<span class="detail-address__area">${escapeHTML(areaCity)}</span>` : ''}
-        ${addressParts.map(p => `<span class="detail-address__line">${p}</span>`).join('')}
+        ${addressLines.map(p => `<span class="detail-address__line">${p}</span>`).join('')}
         ${distText ? `<span class="detail-address__dist">${escapeHTML(distText)}</span>` : ''}
-        ${dirBtnHTML}
       </div>
 
+      ${directionsButtonsHTML(r)}
+
       ${metaLine ? `<div class="detail-meta">${escapeHTML(metaLine)}</div>` : ''}
+
+      ${ratingsHTML(r)}
+
+      ${dietaryBadgesHTML(r)}
 
       <div class="detail-hours">
         ${todayText ? `<button class="detail-hours__today" aria-expanded="false">
           <span>Today: ${escapeHTML(todayText)}</span>
-          <span class="detail-hours__chevron">▾</span>
+          <span class="detail-hours__chevron">\u25be</span>
         </button>` : ''}
         <div class="detail-hours__full" hidden>
           ${fullHoursHTML}
         </div>
       </div>
 
+      ${descriptionHTML}
+
       ${dishesDetailHTML(r.dishes)}
+
+      ${specialitiesHTML(r.specialities)}
 
       ${contactRowHTML(r)}
 
@@ -351,6 +401,10 @@ function hideDetailPage() {
   dom.app.classList.remove('app-shell--detail');
   state.selectedId = null;
 }
+
+/* showNavChoiceSheet kept as no-op export — events.js still imports it
+   but the detail view now uses direct Apple/Google Maps <a> links instead */
+function showNavChoiceSheet() {}
 
 export {
   openDetail,
