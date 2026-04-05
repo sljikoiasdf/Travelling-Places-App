@@ -19,9 +19,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&family=Noto+Sans+Thai:wght@300;400;500;600&display=swap" rel="stylesheet">
 
-  <!-- Leaflet CSS -->
-  <link rel="stylesheet"
-        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <!-- Apple MapKit JS -->
+  <script src="https://cdn.apple-mapkit.com/mk/5.x.x/mapkit.core.js"></script>
 
   <!-- App styles -->
   <link rel="stylesheet" href="styles.css">
@@ -32,7 +31,7 @@
   <!-- App shell — full-screen fixed container -->
   <div class="app-shell" id="app">
 
-    <!-- Main content area — fills between filter bar and nav -->
+    <!-- Main content area -->
     <main class="app-content" id="app-content">
 
       <!-- LIST VIEW -->
@@ -42,8 +41,54 @@
            aria-label="Restaurant list"
            aria-hidden="true">
 
-        <!-- Filter bar — sticky within the list view scroll container -->
+        <!-- Filter bar -->
         <div class="filter-bar" id="filter-bar">
+
+          <!-- Search input -->
+          <div class="search-bar" style="display:flex;align-items:center;gap:8px;padding:8px 16px;">
+            <input type="search"
+                   id="search-input"
+                   class="search-input"
+                   placeholder="Search restaurants\u2026"
+                   autocomplete="off"
+                   autocorrect="off"
+                   spellcheck="false"
+                   style="flex:1;padding:10px 14px;background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:10px;color:#EAE2D2;font-size:15px;font-family:-apple-system,system-ui,sans-serif;outline:none;">
+            <button id="search-clear-btn"
+                    class="search-clear-btn"
+                    hidden
+                    aria-label="Clear search"
+                    style="background:none;border:none;color:#A8957C;font-size:18px;cursor:pointer;padding:8px;">\u2715</button>
+          </div>
+
+          <!-- View toggle (All / Wishlist / Visited) -->
+          <div id="view-toggle"
+               class="view-toggle"
+               role="group"
+               aria-label="View filter"
+               style="display:flex;gap:4px;padding:4px 16px 8px;">
+            <button class="view-toggle__btn view-toggle__btn--active"
+                    data-mode="all"
+                    style="flex:1;padding:8px;background:rgba(201,168,76,0.15);border:1px solid rgba(201,168,76,0.3);border-radius:8px;color:#C9A84C;font-size:13px;font-weight:600;cursor:pointer;">All</button>
+            <button class="view-toggle__btn"
+                    data-mode="wishlist"
+                    style="flex:1;padding:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#A8957C;font-size:13px;font-weight:500;cursor:pointer;">Wishlist</button>
+            <button class="view-toggle__btn"
+                    data-mode="visited"
+                    style="flex:1;padding:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#A8957C;font-size:13px;font-weight:500;cursor:pointer;">Visited</button>
+          </div>
+
+          <!-- Sort button -->
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:0 16px 8px;">
+            <button id="sort-btn"
+                    class="sort-btn"
+                    aria-label="Sort restaurants"
+                    style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#A8957C;font-size:13px;cursor:pointer;">
+              \u2195 Sort
+            </button>
+          </div>
+
+          <!-- Filter chips -->
           <div class="filter-chips"
                id="filter-chips"
                role="group"
@@ -51,9 +96,24 @@
           </div>
         </div>
 
+        <!-- Pull to refresh indicator -->
+        <div id="pull-indicator"
+             class="pull-indicator"
+             aria-hidden="true"
+             style="text-align:center;padding:8px;font-size:13px;color:#A8957C;display:none;">
+          \u2193 Pull to refresh
+        </div>
+
+        <!-- Location notice -->
+        <div id="location-notice"
+             class="location-notice"
+             hidden
+             style="padding:8px 16px;font-size:13px;color:#A8957C;text-align:center;">
+        </div>
+
         <div class="view__content">
 
-          <!-- Skeleton cards shown while loading -->
+          <!-- Skeleton cards -->
           <div class="card-list" id="skeleton-list" aria-hidden="true">
             <div class="skeleton-card">
               <div class="skeleton-card__photo skeleton"></div>
@@ -72,7 +132,7 @@
             </div>
           </div>
 
-          <!-- Restaurant cards injected by JS -->
+          <!-- Restaurant cards -->
           <div class="card-list"
                id="card-list"
                role="list"
@@ -107,7 +167,7 @@
         <div class="map-container" id="map"></div>
       </div>
 
-      <!-- DETAIL VIEW — slides over map/list -->
+      <!-- DETAIL VIEW -->
       <div class="view-detail"
            id="view-detail"
            role="main"
@@ -121,9 +181,7 @@
           </button>
           <h1 class="view-detail__title" id="detail-title"></h1>
         </div>
-        <div class="view-detail__body" id="detail-body">
-          <!-- Content injected by detail.js -->
-        </div>
+        <div class="view-detail__body" id="detail-body"></div>
       </div>
 
     </main>
@@ -196,9 +254,6 @@
        id="toast-container"
        aria-live="polite"
        aria-atomic="true"></div>
-
-  <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <!-- Supabase JS client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

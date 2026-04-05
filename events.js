@@ -1,6 +1,7 @@
 /* ============================================================
    THAILAND FOOD GUIDE — events.js
    All event listeners, personal toggles, keyboard handler
+   All monolith features restored: visited, star ratings
    ============================================================ */
 
 'use strict';
@@ -13,15 +14,25 @@ import { openDetail, showNavChoiceSheet, renderDetailPage } from './detail.js';
 import { applyFiltersAndSearch } from './filters.js';
 import { cardHTML } from './cards.js';
 
-/* ── Personal toggle (wishlist only — visited/stars/notes killed) ── */
+/* ── Personal toggle (wishlist + visited restored) ─────────── */
 
 async function handlePersonalToggle(id, action) {
   if (!id || !action) return;
-  if (action !== 'wishlist') return; // only wishlist survives
   const current = state.personalData.get(id) || {};
-  const next = !current.is_wishlisted;
-  const updates = { is_wishlisted: next };
-  const toast = next ? 'Saved to wishlist' : 'Removed from wishlist';
+  let updates = {};
+  let toast   = '';
+
+  if (action === 'wishlist') {
+    const next = !current.is_wishlisted;
+    updates    = { is_wishlisted: next };
+    toast      = next ? 'Saved to wishlist' : 'Removed from wishlist';
+  } else if (action === 'visited') {
+    const next = !current.is_visited;
+    updates    = { is_visited: next };
+    toast      = next ? 'Marked as visited \u2713' : 'Removed from visited';
+  } else {
+    return;
+  }
 
   await upsertPersonalData(id, updates);
   showToast(toast);
@@ -33,7 +44,7 @@ async function handlePersonalToggle(id, action) {
   }
 
   // Re-render card in list
-  const cardEl = dom.cardList.querySelector(`[data-id="${id}"]`);
+  const cardEl = dom.cardList.querySelector('[data-id="' + id + '"]');
   if (cardEl) {
     const r = state.restaurants.find(r => r.id === id);
     if (r) cardEl.outerHTML = cardHTML(r);
@@ -45,7 +56,7 @@ async function handlePersonalToggle(id, action) {
   }
 }
 
-/* ── Keyboard handler ───────────────────────────────────────── */
+/* ── Keyboard handler ─────────────────────────────────────── */
 
 function initKeyboardHandler() {
   if (!window.visualViewport) return;
@@ -60,7 +71,7 @@ function initKeyboardHandler() {
     if (keyboardHeight > 150) {
       if (!keyboardOpen) {
         keyboardOpen = true;
-        document.documentElement.style.setProperty('--keyboard-height', `${keyboardHeight}px`);
+        document.documentElement.style.setProperty('--keyboard-height', keyboardHeight + 'px');
         document.body.classList.add('keyboard-open');
       }
     } else {
@@ -79,10 +90,10 @@ function initKeyboardHandler() {
   });
 }
 
-/* ── Attach all event listeners ─────────────────────────────── */
+/* ── Attach all event listeners ───────────────────────────── */
 
 function attachEventListeners() {
-  // Card tap → detail, wishlist toggle
+  // Card tap \u2192 detail, wishlist toggle, directions
   dom.cardList.addEventListener('click', (e) => {
     const dirBtn = e.target.closest('[data-action="directions"]');
     if (dirBtn) {
@@ -134,8 +145,9 @@ function attachEventListeners() {
   // Detail back button
   dom.detailBack.addEventListener('click', () => history.back());
 
-  // Detail page actions (wishlist + directions)
+  // Detail page actions (wishlist + visited + directions + star ratings)
   dom.detailBody.addEventListener('click', async (e) => {
+    // Directions button
     const dirBtn = e.target.closest('[data-action="directions"]');
     if (dirBtn) {
       const restId = dirBtn.dataset.restaurantId;
@@ -144,11 +156,32 @@ function attachEventListeners() {
       return;
     }
 
-    const btn = e.target.closest('[data-action="wishlist"][data-id]');
-    if (btn) {
-      handlePersonalToggle(btn.dataset.id, 'wishlist');
+    // Star rating tap handler (restored from monolith)
+    const starBtn = e.target.closest('.star-btn');
+    if (starBtn) {
+      if (!navigator.onLine) { showToast("Can't save while offline", 'error'); return; }
+      const newRating  = parseInt(starBtn.dataset.rating, 10);
+      const restId     = starBtn.dataset.restaurantId;
+      const current    = state.personalData.get(restId) || {};
+      const ratingToSave = current.my_rating === newRating ? null : newRating;
+      // Optimistic UI
+      const container = starBtn.parentElement;
+      if (container) {
+        container.querySelectorAll('.star-btn').forEach((b, i) => {
+          const filled = ratingToSave && (i + 1) <= ratingToSave;
+          b.style.color = filled ? '#C9A84C' : '#4A4440';
+          b.classList.toggle('star-btn--filled', !!filled);
+          b.setAttribute('aria-pressed', filled ? 'true' : 'false');
+        });
+      }
+      await upsertPersonalData(restId, { my_rating: ratingToSave });
       return;
     }
+
+    // Wishlist and visited toggle
+    const btn = e.target.closest('[data-action][data-id]');
+    if (!btn) return;
+    handlePersonalToggle(btn.dataset.id, btn.dataset.action);
   });
 
   // Search input
@@ -195,13 +228,13 @@ function attachEventListeners() {
       { key: 'newest',  label: 'Newly added' }
     ];
 
-    dom.sortSheet.innerHTML = options.map(o => `
-      <div class="sort-option ${state.sortOrder === o.key ? 'sort-option--active' : ''} ${o.disabled ? 'sort-option--disabled' : ''}"
-        data-sort="${o.key}" ${o.disabled ? 'aria-disabled="true"' : ''}>
-        ${o.label}
-        ${state.sortOrder === o.key ? '<span class="sort-option__check">✓</span>' : ''}
-      </div>
-    `).join('');
+    dom.sortSheet.innerHTML = options.map(o =>
+      '<div class="sort-option ' + (state.sortOrder === o.key ? 'sort-option--active' : '') + ' ' + (o.disabled ? 'sort-option--disabled' : '') + '"'
+      + ' data-sort="' + o.key + '" ' + (o.disabled ? 'aria-disabled="true"' : '') + '>'
+      + o.label
+      + (state.sortOrder === o.key ? '<span class="sort-option__check">\u2713</span>' : '')
+      + '</div>'
+    ).join('');
 
     dom.sortSheetOverlay.classList.add('sort-sheet-overlay--visible');
 
