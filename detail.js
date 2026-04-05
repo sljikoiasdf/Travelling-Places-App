@@ -1,6 +1,6 @@
 /* ============================================================
    THAILAND FOOD GUIDE — detail.js
-   Restaurant detail page with all personal features restored
+   Restaurant detail page
    ============================================================ */
 
 'use strict';
@@ -24,7 +24,7 @@ function resolveNavDestination(restaurant) {
   return null;
 }
 
-/* ── Navigation URLs ──────────────────────────────────────── */
+/* ── Navigation URLs ────────────────────────────────────── */
 
 function navUrls(restaurant) {
   const dest = resolveNavDestination(restaurant);
@@ -43,7 +43,7 @@ function navUrls(restaurant) {
   return { apple, google, streetView };
 }
 
-/* ── Photo strip (restored from monolith) ─────────────────── */
+/* ── Photo strip ───────────────────────────────────────────── */
 
 function photoStripHTML(restaurant) {
   const photos = [];
@@ -76,7 +76,7 @@ function photoStripHTML(restaurant) {
   return '<div style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;">' + slides + '</div>';
 }
 
-/* ── Location block (restored: cart finder box, landmark notes) ── */
+/* ── Location block (cart finder box, landmark notes) ────── */
 
 function locationBlockHTML(restaurant) {
   const p = restaurant.location_precision;
@@ -97,50 +97,6 @@ function locationBlockHTML(restaurant) {
   }
 
   return html;
-}
-
-/* ── Star rating (restored from monolith) ─────────────────── */
-
-function starRatingHTML(rating, restaurantId, interactive) {
-  if (!interactive && (!rating || rating === 0)) return '';
-  const stars = [1, 2, 3, 4, 5].map(n => {
-    const filled = rating && n <= rating;
-    if (interactive) {
-      return '<button class="star-btn' + (filled ? ' star-btn--filled' : '') + '" data-rating="' + n + '" data-restaurant-id="' + restaurantId + '" aria-label="' + n + ' star' + (n > 1 ? 's' : '') + '" aria-pressed="' + (filled ? 'true' : 'false') + '" style="background:none;border:none;font-size:28px;color:' + (filled ? '#C9A84C' : '#4A4440') + ';cursor:pointer;padding:4px;-webkit-tap-highlight-color:transparent;">\u2605</button>';
-    }
-    return '<span style="font-size:16px;color:' + (filled ? '#C9A84C' : '#4A4440') + ';">\u2605</span>';
-  }).join('');
-  return '<div style="display:flex;align-items:center;gap:2px;' + (interactive ? 'justify-content:center;padding:8px 0;' : '') + '" role="' + (interactive ? 'group' : 'img') + '" aria-label="Rating: ' + (rating || 0) + ' out of 5">' + stars + '</div>';
-}
-
-/* ── Personal notes (restored from monolith) ─────────────── */
-
-function personalNotesHTML(notes, restaurantId) {
-  const safe = notes ? notes.replace(/</g, '&lt;') : '';
-  return '<div style="padding:0 16px;">'
-    + '<label style="font-size:12px;font-weight:600;color:#6B5F52;text-transform:uppercase;letter-spacing:0.05em;" for="personal-notes-' + restaurantId + '">Your notes</label>'
-    + '<textarea id="personal-notes-' + restaurantId + '" data-restaurant-id="' + restaurantId + '" placeholder="Add your own notes\u2026" rows="3" style="width:100%;margin-top:6px;padding:12px;background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:10px;color:#EAE2D2;font-size:15px;font-family:-apple-system,system-ui,sans-serif;resize:vertical;outline:none;box-sizing:border-box;">' + safe + '</textarea>'
-    + '<span id="personal-notes-saved-' + restaurantId + '" style="font-size:12px;color:#4CAF50;opacity:0;transition:opacity 300ms;">Saved</span>'
-    + '</div>';
-}
-
-function attachPersonalNotesListener(restaurantId) {
-  const textarea = document.getElementById('personal-notes-' + restaurantId);
-  const savedEl  = document.getElementById('personal-notes-saved-' + restaurantId);
-  if (!textarea) return;
-  let notesDebounceTimer;
-  textarea.addEventListener('input', () => {
-    if (!navigator.onLine) { showToast("Can't save while offline", 'error'); return; }
-    clearTimeout(notesDebounceTimer);
-    notesDebounceTimer = setTimeout(async () => {
-      const value = textarea.value.trim();
-      await upsertPersonalData(restaurantId, { notes: value });
-      if (savedEl) {
-        savedEl.style.opacity = '1';
-        setTimeout(() => { savedEl.style.opacity = '0'; }, 1500);
-      }
-    }, 1000);
-  });
 }
 
 /* ── Dishes detail ──────────────────────────────────────────── */
@@ -210,9 +166,9 @@ function sourceAttributionHTML(restaurant) {
   return '<div class="source-attribution"><p class="source-attribution__quote">"' + escapeHTML(restaurant.source_quote_th) + '"</p></div>';
 }
 
-/* ── Review links (async) ───────────────────────────────────── */
+/* ── Review links (block layout, 2-3 across) ──────────────── */
 
-async function reviewLinksHTML(restaurantId) {
+async function reviewLinksHTML(restaurantId, restaurantName) {
   const { data: sources, error } = await db
     .from('restaurant_sources')
     .select('url, excerpt, language, source_tier, rating_score, sources(name)')
@@ -223,22 +179,18 @@ async function reviewLinksHTML(restaurantId) {
 
   if (error || !sources || sources.length === 0) return '';
 
-  return '<div style="padding:0 16px;display:flex;flex-direction:column;gap:8px;">'
-    + '<h3 style="font-size:13px;font-weight:600;color:#6B5F52;text-transform:uppercase;letter-spacing:0.08em;">Sources &amp; Reviews</h3>'
-    + sources.map(s => {
-      const label = s.sources?.name || 'Review';
-      const rating = s.rating_score ? ' \u00b7 ' + s.rating_score + '/5' : '';
-      const desc = s.excerpt
-        ? '<span class="review-card__desc">' + escapeHTML(s.excerpt) + '</span>'
-        : (s.source_tier === 'local_platform'
-          ? '<span class="review-card__desc">Thai language reviews and ratings</span>'
-          : '');
-      return '<a href="' + escapeHTML(s.url) + '" class="review-card" target="_blank" rel="noopener noreferrer">'
-        + '<span class="review-card__source">' + escapeHTML(label) + rating + '</span>'
-        + desc
-        + '<span class="review-card__arrow" aria-hidden="true">\u203A</span>'
-        + '</a>';
-    }).join('')
+  const safeName = escapeHTML(restaurantName || 'this restaurant');
+  const btnStyle = 'display:flex;align-items:center;justify-content:center;gap:6px;flex:1;min-width:calc(50% - 4px);padding:12px 10px;background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:12px;font-size:14px;font-weight:500;color:#EAE2D2;text-decoration:none;text-align:center;-webkit-tap-highlight-color:transparent;';
+
+  const blocks = sources.map(s => {
+    const label = s.sources?.name || 'Review';
+    const rating = s.rating_score ? ' \u2605' + s.rating_score : '';
+    return '<a href="' + escapeHTML(s.url) + '" style="' + btnStyle + '" target="_blank" rel="noopener noreferrer">' + escapeHTML(label) + rating + '</a>';
+  }).join('');
+
+  return '<div style="padding:0 16px;">'
+    + '<h3 style="font-size:14px;font-weight:600;color:#A8957C;margin-bottom:10px;">Read Reviews on ' + safeName + '</h3>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:8px;">' + blocks + '</div>'
     + '</div>';
 }
 
@@ -251,6 +203,9 @@ function contactRowHTML(restaurant) {
     let display = raw;
     const thaiMatch = raw.replace(/^\+66/, '0').match(/^(0\d{1,2})(\d{3,4})(\d{4})$/);
     if (thaiMatch) display = thaiMatch[1] + '-' + thaiMatch[2] + '-' + thaiMatch[3];
+    // Also handle Australian numbers
+    const auMatch = raw.match(/^(\(?0\d\)?)(\d{4})(\d{4})$/);
+    if (auMatch) display = auMatch[1] + ' ' + auMatch[2] + ' ' + auMatch[3];
     items.push('<a class="contact-link contact-link--phone" href="tel:' + encodeURI(raw) + '">\uD83D\uDCDE ' + escapeHTML(display) + '</a>');
   }
   if (restaurant.website) {
@@ -285,7 +240,7 @@ function directionsButtonsHTML(restaurant) {
     + '</div>';
 }
 
-/* ── Navigation choice sheet (restored from monolith) ─────── */
+/* ── Navigation choice sheet ─────────────────────────────── */
 
 function showNavChoiceSheet(restaurant) {
   const urls = navUrls(restaurant);
@@ -337,7 +292,7 @@ function openDetail(id) {
   window.location.hash = '#restaurant/' + encodeURIComponent(key);
 }
 
-/* ── Render detail page (with all restored features) ──────── */
+/* ── Render detail page ────────────────────────────────────── */
 
 function renderDetailPage(r) {
   state.selectedId = r.id;
@@ -359,12 +314,6 @@ function renderDetailPage(r) {
   // Names
   const displayName = r.name_en || r.name_th || '';
   const subName = (r.name_th && r.name_en && r.name_th !== r.name_en) ? r.name_th : '';
-
-  // Address block
-  const areaCity = [
-    r.area ? r.area.replace(/_/g, ' ') : null,
-    r.city ? cityLabel(r.city) : null
-  ].filter(Boolean).join(', ');
 
   // Cuisine + price
   const cuisineDisplay = Array.isArray(r.cuisine_types)
@@ -391,11 +340,6 @@ function renderDetailPage(r) {
     ? '<button class="detail__heart detail__heart--active" data-action="wishlist" data-id="' + r.id + '" aria-label="Remove from wishlist" aria-pressed="true">\u2665</button>'
     : '<button class="detail__heart" data-action="wishlist" data-id="' + r.id + '" aria-label="Add to wishlist" aria-pressed="false">\u2661</button>';
 
-  // Visited button
-  const visitedHTML = '<button class="personal-btn' + (personal.is_visited ? ' personal-btn--visited' : '') + '" data-action="visited" data-id="' + r.id + '" aria-pressed="' + (!!personal.is_visited) + '" aria-label="' + (personal.is_visited ? 'Mark as not visited' : 'Mark as visited') + '" style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:' + (personal.is_visited ? 'rgba(76,175,80,0.15)' : 'rgba(255,255,255,0.06)') + ';border:1px solid ' + (personal.is_visited ? 'rgba(76,175,80,0.4)' : 'rgba(255,255,255,0.1)') + ';border-radius:12px;color:' + (personal.is_visited ? '#4CAF50' : '#A8957C') + ';font-size:15px;font-weight:500;cursor:pointer;-webkit-tap-highlight-color:transparent;">'
-    + (personal.is_visited ? '\u2713 Visited' : '\u25CB Mark visited')
-    + '</button>';
-
   // Distance
   const detailPrecision = r.location_precision || 'no_location';
   let distText = '';
@@ -405,10 +349,6 @@ function renderDetailPage(r) {
     const fd = formatDistance(r._distanceMetres, detailPrecision);
     if (fd) distText = (detailPrecision === 'approximate' ? '~' : '') + fd;
   }
-
-  // Address lines
-  const addressLines = [];
-  if (r.address_en) addressLines.push(escapeHTML(r.address_en));
 
   // Tagline
   const taglineHTML = r.tagline
@@ -431,13 +371,13 @@ function renderDetailPage(r) {
     + (subName ? '<span class="detail-header__subname">' + escapeHTML(subName) + '</span>' : '')
     + (r.legacy_note ? '<span class="detail-header__legacy">' + escapeHTML(r.legacy_note) + '</span>' : '')
     + '</div>'
-    + michelinHTML
-    + taglineHTML
     + '<div class="detail-address">'
-    + (areaCity ? '<span class="detail-address__area">' + escapeHTML(areaCity) + '</span>' : '')
-    + addressLines.map(p => '<span class="detail-address__line">' + p + '</span>').join('')
+    + (r.address_en ? '<span class="detail-address__line">' + escapeHTML(r.address_en) + '</span>' : '')
     + (distText ? '<span class="detail-address__dist">' + escapeHTML(distText) + '</span>' : '')
     + '</div>'
+    + contactRowHTML(r)
+    + michelinHTML
+    + taglineHTML
     + locationBlockHTML(r)
     + directionsButtonsHTML(r)
     + (metaLine ? '<div class="detail-meta">' + escapeHTML(metaLine) + '</div>' : '')
@@ -450,12 +390,6 @@ function renderDetailPage(r) {
     + descriptionHTML
     + dishesDetailHTML(r.dishes)
     + specialitiesHTML(r.specialities)
-    + contactRowHTML(r)
-    + '<div style="padding:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center;">'
-    + visitedHTML
-    + '</div>'
-    + starRatingHTML(personal.my_rating, r.id, true)
-    + personalNotesHTML(personal.notes, r.id)
     + sourceAttributionHTML(r)
     + '<div id="review-links-placeholder"></div>'
     + '</div>';
@@ -464,9 +398,6 @@ function renderDetailPage(r) {
   dom.viewDetail.classList.add('view-detail--active');
   dom.viewDetail.removeAttribute('aria-hidden');
   dom.detailBody.scrollTop = 0;
-
-  // Attach personal notes listener
-  attachPersonalNotesListener(r.id);
 
   // Expandable hours
   const todayBtn = dom.detailBody.querySelector('.detail-hours__today');
@@ -479,8 +410,8 @@ function renderDetailPage(r) {
     });
   }
 
-  // Async: review links
-  reviewLinksHTML(r.id).then(html => {
+  // Async: review links (block layout)
+  reviewLinksHTML(r.id, r.name_en || r.name_th || '').then(html => {
     const placeholder = document.getElementById('review-links-placeholder');
     if (placeholder && html) {
       placeholder.outerHTML = html;

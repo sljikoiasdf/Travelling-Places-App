@@ -246,7 +246,7 @@ function renderPins(restaurants) {
 
   const zoom       = state.map.getZoom();
   const dotSize    = getDotSize(zoom);
-  const showLabels = zoom >= 14;
+  const showLabels = zoom >= 16;
 
   restaurants.forEach(r => {
     if (!r.lat || !r.lng) return;
@@ -273,8 +273,8 @@ function renderPins(restaurants) {
     if (showLabels) {
       const rawLabel = r.name_en || r.name_th || '';
       const pinLabel = rawLabel.length > 22 ? rawLabel.slice(0, 21) + '\u2026' : rawLabel;
-      const fontSize = zoom >= 16 ? '13px' : '11px';
-      const labelPad = zoom >= 16 ? '3px 8px' : '2px 6px';
+      const fontSize = zoom >= 17 ? '13px' : '11px';
+      const labelPad = zoom >= 17 ? '3px 8px' : '2px 6px';
       labelHtml = '<span style="font-family:-apple-system,system-ui,sans-serif;font-size:' + fontSize + ';font-weight:600;color:#1a1a1a;background:rgba(255,255,255,0.93);padding:' + labelPad + ';border-radius:6px;white-space:nowrap;pointer-events:none;line-height:1.3;max-width:180px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 3px rgba(0,0,0,0.25);margin-left:5px;">' + escapeHTML(pinLabel) + '</span>';
     }
 
