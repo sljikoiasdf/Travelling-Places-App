@@ -76,25 +76,37 @@ function photoStripHTML(restaurant) {
   return '<div style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;">' + slides + '</div>';
 }
 
-/* ── Contact grid (compact 2x2) ─────────────────────────────── */
+/* ── Info grid (compact 3x2) ───────────────────────────────── */
 
-function contactGridHTML(restaurant) {
-  const cells = [];
-  const cellStyle = 'flex:1;min-width:calc(50% - 4px);padding:10px 12px;background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:10px;display:flex;flex-direction:column;gap:2px;';
-  const iconStyle = 'font-size:14px;';
-  const labelStyle = 'font-size:11px;color:#6B5F52;font-weight:500;text-transform:uppercase;letter-spacing:0.03em;';
-  const valueStyle = 'font-size:14px;color:#EAE2D2;font-weight:500;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+function infoGridHTML(restaurant) {
+  const cellStyle = 'padding:8px 10px;background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:10px;display:flex;flex-direction:column;gap:2px;min-width:0;';
+  const labelStyle = 'font-size:10px;color:#6B5F52;font-weight:500;text-transform:uppercase;letter-spacing:0.03em;';
+  const valueStyle = 'font-size:13px;color:#EAE2D2;font-weight:500;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
   const linkValueStyle = valueStyle + 'color:#C9A84C;text-decoration:none;';
 
+  // Price
+  const priceDisplay = restaurant.price_range ? '\u0E3F'.repeat(restaurant.price_range) : '—';
+  const priceCell = '<div style="' + cellStyle + '">'
+    + '<span style="' + labelStyle + '">Price</span>'
+    + '<span style="' + valueStyle + '">' + priceDisplay + '</span>'
+    + '</div>';
+
+  // Hours today (tappable to expand)
+  const todayText = todayHoursText(restaurant.opening_hours) || '—';
+  const hoursCell = '<button type="button" class="detail-hours__today" aria-expanded="false" style="' + cellStyle + 'cursor:pointer;text-align:left;font-family:inherit;">'
+    + '<span style="' + labelStyle + '">Today</span>'
+    + '<span style="' + valueStyle + 'color:#C9A84C;">' + escapeHTML(todayText) + ' \u25BE</span>'
+    + '</button>';
+
   // Address
-  if (restaurant.address_en) {
-    cells.push('<div style="' + cellStyle + '">'
-      + '<span style="' + labelStyle + '">Address</span>'
-      + '<span style="' + valueStyle + '" title="' + escapeHTML(restaurant.address_en) + '">' + escapeHTML(restaurant.address_en) + '</span>'
-      + '</div>');
-  }
+  const addressVal = restaurant.address_en || '—';
+  const addressCell = '<div style="' + cellStyle + '">'
+    + '<span style="' + labelStyle + '">Address</span>'
+    + '<span style="' + valueStyle + '" title="' + escapeHTML(addressVal) + '">' + escapeHTML(addressVal) + '</span>'
+    + '</div>';
 
   // Phone
+  let phoneCell;
   if (restaurant.phone) {
     const raw = restaurant.phone.replace(/\s+/g, '');
     let display = raw;
@@ -102,40 +114,54 @@ function contactGridHTML(restaurant) {
     if (thaiMatch) display = thaiMatch[1] + '-' + thaiMatch[2] + '-' + thaiMatch[3];
     const auMatch = raw.match(/^(\(?0\d\)?)(\d{4})(\d{4})$/);
     if (auMatch) display = auMatch[1] + ' ' + auMatch[2] + ' ' + auMatch[3];
-    cells.push('<div style="' + cellStyle + '">'
+    phoneCell = '<div style="' + cellStyle + '">'
       + '<span style="' + labelStyle + '">Phone</span>'
       + '<a href="tel:' + encodeURI(raw) + '" style="' + linkValueStyle + '">' + escapeHTML(display) + '</a>'
-      + '</div>');
+      + '</div>';
+  } else {
+    phoneCell = '<div style="' + cellStyle + '"><span style="' + labelStyle + '">Phone</span><span style="' + valueStyle + '">—</span></div>';
   }
 
   // Website
+  let websiteCell;
   if (restaurant.website) {
     let displayUrl = restaurant.website;
     try { displayUrl = new URL(restaurant.website).hostname.replace(/^www\./, ''); } catch {}
-    cells.push('<div style="' + cellStyle + '">'
+    websiteCell = '<div style="' + cellStyle + '">'
       + '<span style="' + labelStyle + '">Website</span>'
       + '<a href="' + escapeHTML(restaurant.website) + '" target="_blank" rel="noopener noreferrer" style="' + linkValueStyle + '">' + escapeHTML(displayUrl) + '</a>'
-      + '</div>');
+      + '</div>';
+  } else {
+    websiteCell = '<div style="' + cellStyle + '"><span style="' + labelStyle + '">Website</span><span style="' + valueStyle + '">—</span></div>';
   }
 
   // Distance
   const detailPrecision = restaurant.location_precision || 'no_location';
-  let distText = '';
+  let distText = '—';
   if (detailPrecision === 'area_only' && restaurant.area) {
     distText = restaurant.area.replace(/_/g, ' ');
   } else if (detailPrecision !== 'no_location') {
     const fd = formatDistance(restaurant._distanceMetres, detailPrecision);
     if (fd) distText = (detailPrecision === 'approximate' ? '~' : '') + fd;
   }
-  if (distText) {
-    cells.push('<div style="' + cellStyle + '">'
-      + '<span style="' + labelStyle + '">Distance</span>'
-      + '<span style="' + valueStyle + '">' + escapeHTML(distText) + '</span>'
-      + '</div>');
-  }
+  const distCell = '<div style="' + cellStyle + '">'
+    + '<span style="' + labelStyle + '">Distance</span>'
+    + '<span style="' + valueStyle + '">' + escapeHTML(distText) + '</span>'
+    + '</div>';
 
-  if (cells.length === 0) return '';
-  return '<div style="display:flex;flex-wrap:wrap;gap:8px;padding:0 16px;">' + cells.join('') + '</div>';
+  // Full hours (hidden, shown when Today cell tapped)
+  const dayNames  = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
+  const fullHoursHTML = restaurant.opening_hours
+    ? Object.entries(dayNames).map(([key, label]) =>
+        '<div class="detail-hours__row"><span class="detail-hours__day">' + label + '</span><span class="detail-hours__time">' + formatDayHours(restaurant.opening_hours[key]) + '</span></div>'
+      ).join('')
+    : '';
+
+  return '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:0 16px;">'
+    + priceCell + hoursCell + addressCell
+    + phoneCell + websiteCell + distCell
+    + '</div>'
+    + '<div class="detail-hours__full" hidden style="padding:6px 16px 0;">' + fullHoursHTML + '</div>';
 }
 
 /* ── Location block (cart finder box, landmark notes) ────── */
@@ -259,7 +285,7 @@ function extractSourceName(url, fallbackName) {
   }
 }
 
-/* ── Review links (block layout, 2-3 across) ──────────────── */
+/* ── Review links (block layout, 2-3 across, compact) ──────── */
 
 async function reviewLinksHTML(restaurantId, restaurantName) {
   const { data: sources, error } = await db
@@ -273,7 +299,7 @@ async function reviewLinksHTML(restaurantId, restaurantName) {
   if (error || !sources || sources.length === 0) return '';
 
   const safeName = escapeHTML(restaurantName || 'this restaurant');
-  const btnStyle = 'display:flex;align-items:center;justify-content:center;gap:6px;flex:1;min-width:calc(50% - 4px);padding:12px 10px;background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:12px;font-size:14px;font-weight:500;color:#EAE2D2;text-decoration:none;text-align:center;-webkit-tap-highlight-color:transparent;';
+  const btnStyle = 'display:flex;align-items:center;justify-content:center;gap:6px;flex:1;min-width:calc(50% - 4px);padding:8px 10px;background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:10px;font-size:13px;font-weight:500;color:#EAE2D2;text-decoration:none;text-align:center;-webkit-tap-highlight-color:transparent;';
 
   const blocks = sources.map(s => {
     const label = extractSourceName(s.url, s.sources?.name);
@@ -282,30 +308,30 @@ async function reviewLinksHTML(restaurantId, restaurantName) {
   }).join('');
 
   return '<div style="padding:0 16px;">'
-    + '<h3 style="font-size:14px;font-weight:600;color:#A8957C;margin-bottom:10px;">Read Reviews on ' + safeName + '</h3>'
-    + '<div style="display:flex;flex-wrap:wrap;gap:8px;">' + blocks + '</div>'
+    + '<h3 style="font-size:13px;font-weight:600;color:#A8957C;margin-bottom:6px;">Read Reviews on ' + safeName + '</h3>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + blocks + '</div>'
     + '</div>';
 }
 
-/* ── Directions buttons (Apple Maps + Google Maps side by side) ── */
+/* ── Directions buttons (Apple Maps + Google Maps + Street View, single row) ── */
 
 function directionsButtonsHTML(restaurant) {
   const urls = navUrls(restaurant);
   const dest = resolveNavDestination(restaurant);
   const approxNote = dest?.isApproximate
-    ? '<p style="font-size:12px;color:#6B5F52;font-style:italic;margin-bottom:8px;text-align:center;">' + escapeHTML(dest.label || 'Location approximate') + '</p>'
+    ? '<p style="font-size:12px;color:#6B5F52;font-style:italic;margin-bottom:6px;text-align:center;">' + escapeHTML(dest.label || 'Location approximate') + '</p>'
     : '';
-  const btnBase = 'display:flex;align-items:center;justify-content:center;gap:6px;flex:1;padding:12px 8px;min-height:48px;border-radius:12px;font-size:15px;font-weight:600;text-decoration:none;transition:opacity 150ms;';
+  const btnBase = 'display:flex;align-items:center;justify-content:center;gap:4px;flex:1;padding:10px 6px;min-height:44px;border-radius:10px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;';
   const appleBtnStyle = btnBase + 'background:#C9A84C;color:#0E0E0E;';
-  const googleBtnStyle = btnBase + 'background:#222222;color:#EAE2D2;border:1px solid rgba(255,255,255,0.07);';
+  const secondaryBtnStyle = btnBase + 'background:#222222;color:#EAE2D2;border:1px solid rgba(255,255,255,0.07);';
 
   return '<div style="padding:0 16px;">'
     + approxNote
-    + '<div style="display:flex;gap:8px;">'
-    + '<a href="' + urls.apple + '" style="' + appleBtnStyle + '">\uD83D\uDDFA Apple Maps</a>'
-    + '<a href="' + urls.google + '" style="' + googleBtnStyle + '" target="_blank" rel="noopener">\uD83D\uDCCD Google Maps</a>'
+    + '<div style="display:flex;gap:6px;">'
+    + '<a href="' + urls.apple + '" style="' + appleBtnStyle + '">\uD83D\uDDFA Apple</a>'
+    + '<a href="' + urls.google + '" style="' + secondaryBtnStyle + '" target="_blank" rel="noopener">\uD83D\uDCCD Google</a>'
+    + (urls.streetView ? '<a href="' + urls.streetView + '" style="' + secondaryBtnStyle + '" target="_blank" rel="noopener">\uD83D\uDCF7 Street</a>' : '')
     + '</div>'
-    + (urls.streetView ? '<a href="' + urls.streetView + '" style="display:flex;align-items:center;justify-content:center;gap:4px;margin-top:8px;padding:8px;font-size:13px;color:#A8957C;text-decoration:none;" target="_blank" rel="noopener">\uD83D\uDCF7 Street View</a>' : '')
     + '</div>';
 }
 
@@ -384,21 +410,6 @@ function renderDetailPage(r) {
   const displayName = r.name_en || r.name_th || '';
   const subName = (r.name_th && r.name_en && r.name_th !== r.name_en) ? r.name_th : '';
 
-  // Cuisine + price
-  const cuisineDisplay = Array.isArray(r.cuisine_types)
-    ? r.cuisine_types.map(c => c.replace(/_/g, ' ')).join(', ') : '';
-  const priceDisplay = r.price_range ? '\u0E3F'.repeat(r.price_range) : '';
-  const metaLine = [cuisineDisplay, priceDisplay].filter(Boolean).join(' \u00b7 ');
-
-  // Today's hours
-  const todayText = todayHoursText(r.opening_hours);
-  const dayNames  = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
-  const fullHoursHTML = r.opening_hours
-    ? Object.entries(dayNames).map(([key, label]) =>
-        '<div class="detail-hours__row"><span class="detail-hours__day">' + label + '</span><span class="detail-hours__time">' + formatDayHours(r.opening_hours[key]) + '</span></div>'
-      ).join('')
-    : '';
-
   // Michelin
   const michelinHTML = r.michelin_stars > 0
     ? '<span class="detail__michelin">' + '\u2605'.repeat(r.michelin_stars) + ' Michelin Star' + (r.michelin_stars > 1 ? 's' : '') + '</span>'
@@ -430,16 +441,11 @@ function renderDetailPage(r) {
     + (subName ? '<span class="detail-header__subname">' + escapeHTML(subName) + '</span>' : '')
     + (r.legacy_note ? '<span class="detail-header__legacy">' + escapeHTML(r.legacy_note) + '</span>' : '')
     + '</div>'
-    + contactGridHTML(r)
+    + infoGridHTML(r)
+    + directionsButtonsHTML(r)
     + michelinHTML
     + taglineHTML
     + locationBlockHTML(r)
-    + directionsButtonsHTML(r)
-    + (metaLine ? '<div class="detail-meta">' + escapeHTML(metaLine) + '</div>' : '')
-    + '<div class="detail-hours">'
-    + (todayText ? '<button class="detail-hours__today" aria-expanded="false"><span>Today: ' + escapeHTML(todayText) + '</span><span class="detail-hours__chevron">\u25BE</span></button>' : '')
-    + '<div class="detail-hours__full" hidden>' + fullHoursHTML + '</div>'
-    + '</div>'
     + ratingsHTML(r)
     + dietaryBadgesHTML(r)
     + '<div id="review-links-placeholder"></div>'
@@ -454,7 +460,7 @@ function renderDetailPage(r) {
   dom.viewDetail.removeAttribute('aria-hidden');
   dom.detailBody.scrollTop = 0;
 
-  // Expandable hours
+  // Expandable hours (Today cell in info grid toggles full hours)
   const todayBtn = dom.detailBody.querySelector('.detail-hours__today');
   const fullHours = dom.detailBody.querySelector('.detail-hours__full');
   if (todayBtn && fullHours) {
