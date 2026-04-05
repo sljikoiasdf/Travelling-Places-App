@@ -51,47 +51,6 @@
   letter-spacing: 0.08em;
 }
 
-/* ── Detail view photo area ─────────────────────────────── */
-/* Wraps photoStripHTML() output for the detail page.
-   Full-bleed (edge-to-edge), taller than card strip (240px vs 180px),
-   no border-radius since it sits at the top of the scrollable content. */
-.detail-photo-area {
-  margin: calc(-1 * var(--space-4)) calc(-1 * var(--space-4)) 0;
-}
-.detail-photo-area .card__photo-strip {
-  height: 240px;
-  border-radius: 0;
-}
-.detail-photo-area .card__photo-strip .card__photo-slide {
-  width: 100%; /* Full-width slides in detail view (vs 85% peeking in card) */
-}
-.detail-photo-area .card__photo-placeholder {
-  height: 240px;
-  min-height: 240px;
-  border-radius: 0;
-}
-
-/* ── Detail tagline ─────────────────────────────────────── */
-/* Short italic teaser shown below the meta-row when present */
-.detail-tagline {
-  font-family: var(--font-body);
-  font-size: var(--text-md);
-  font-style: italic;
-  color: var(--color-text-secondary);
-  line-height: var(--leading-relaxed);
-  padding: var(--space-1) 0;
-}
-
-/* ── Address in detail location block ───────────────────── */
-.detail__address {
-  font-family: var(--font-body);
-  font-size: var(--text-base);
-  font-weight: var(--weight-medium);
-  color: var(--color-text-primary);
-  line-height: var(--leading-normal);
-  margin-bottom: var(--space-1);
-}
-
 /* ── Star Rating (Build 2 — MISSING-09) ─────────────────── */
 .star-rating {
   display: flex;
@@ -324,6 +283,7 @@
   letter-spacing: 0.05em;
 }
 
+/* Card compact dishes preview */
 .card__dishes-preview {
   font-family: var(--font-body);
   font-size: var(--text-sm);
@@ -383,6 +343,7 @@
 .personal-notes__saved--visible { opacity: 1; }
 
 /* ── Pull-to-Refresh (Build 2 — MISSING-13) ─────────────── */
+/* Note: uses transform+opacity (GPU-compositable) — not height animation per MOBILE_CONSTRAINTS.md */
 .pull-indicator {
   display: flex;
   align-items: center;
@@ -470,6 +431,8 @@
 .sort-option__check { font-size: var(--text-lg); }
 
 /* ── Meal Period Chips (Build 2 — MISSING-08) ───────────── */
+/* Period chips reuse .filter-chip base styles */
+/* Add period-specific active colour override */
 .filter-chip--period.filter-chip--active {
   background: var(--color-accent-gold);
   color: var(--color-bg-base);
@@ -622,4 +585,13 @@
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
   align-self: center;
+}
+
+.review-links-section__attribution {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  font-style: italic;
+  padding: var(--space-2) 0;
+  margin: 0;
 }

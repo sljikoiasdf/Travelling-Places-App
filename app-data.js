@@ -5,7 +5,7 @@
 const IDB_NAME    = 'thailand-food';
 const IDB_VERSION = 1;
 const IDB_STORE   = 'cache';
-const CACHE_KEY   = 'restaurants_v2';
+const CACHE_KEY   = 'restaurants_v3';
 
 function openIDB() {
   return new Promise((resolve, reject) => {
@@ -53,6 +53,10 @@ async function setCached(key, value) {
    Spec: docs/design/MISSING_FEATURES.md — MISSING-01
    ============================================================ */
 
+/* ── GPS request ─────────────────────────────────────────────
+   Requests location on app open; sets state.userLat/Lng and
+   state.locationStatus. Timeout: 8s. No localStorage persist.
+   ────────────────────────────────────────────────────────── */
 async function requestLocation() {
   if (!navigator.geolocation) {
     state.locationStatus = 'unavailable';
@@ -69,6 +73,7 @@ async function requestLocation() {
         resolve();
       },
       () => {
+        // Denied or error
         state.locationStatus = 'denied';
         resolve();
       },
@@ -77,9 +82,13 @@ async function requestLocation() {
   });
 }
 
+/* ── Haversine distance calculator ──────────────────────────
+   Returns distance in metres between two lat/lng coordinates.
+   Used as fallback when RPC does not return dist_metres.
+   ────────────────────────────────────────────────────────── */
 function haversineDistance(lat1, lng1, lat2, lng2) {
   if (!lat1 || !lng1 || !lat2 || !lng2) return null;
-  const R = 6371000;
+  const R = 6371000; // Earth radius in metres
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLng = (lng2 - lng1) * Math.PI / 180;
   const a = Math.sin(dLat / 2) ** 2 +
@@ -88,6 +97,10 @@ function haversineDistance(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+/* ── GPS status notice ───────────────────────────────────────
+   Shows a notice when GPS is denied/unavailable.
+   Reads #location-notice element in index.html.
+   ────────────────────────────────────────────────────────── */
 function renderLocationNotice() {
   const el = document.getElementById('location-notice');
   if (!el) return;
@@ -107,8 +120,10 @@ async function fetchRestaurants() {
   state.isLoading = true;
   renderLoadingState();
 
+  // Request GPS first — completes before data fetch (8s timeout max)
   await requestLocation();
 
+  // Try cache first (cache is location-agnostic — stores full restaurant list)
   const cached = await getCached(CACHE_KEY);
   if (cached) {
     state.restaurants = cached;
@@ -126,6 +141,8 @@ async function refreshFromNetwork() {
     let data, error;
 
     if (state.locationStatus === 'granted' && state.userLat && state.userLng) {
+      // GPS available — use nearby_restaurants RPC (sorted by distance)
+      // radius_m: 50000 (50km) — returns all restaurants within 50km of user
       ({ data, error } = await db.rpc('nearby_restaurants', {
         user_lat: state.userLat,
         user_lng: state.userLng,
@@ -133,6 +150,8 @@ async function refreshFromNetwork() {
         limit_n:  100
       }));
 
+      // Attach _distanceMetres to each restaurant for use by distance display (MISSING-02)
+      // RPC returns dist_metres column; fall back to haversine if null
       if (data) {
         data = data.map(r => ({
           ...r,
@@ -142,6 +161,7 @@ async function refreshFromNetwork() {
         }));
       }
     } else {
+      // No GPS — fetch all restaurants sorted by rating
       ({ data, error } = await db
         .from('restaurants')
         .select(`
@@ -151,7 +171,6 @@ async function refreshFromNetwork() {
           michelin_stars, michelin_bib,
           opening_hours, phone, website, wongnai_url, tagline,
           photos, identification_photo_url, dishes,
-          address_en, description_en, description_th,
           cart_identifier, location_notes,
           nearby_landmark_en, landmark_latitude, landmark_longitude,
           legacy_note, source_quote_th, source_url, wongnai_rating,
@@ -160,6 +179,7 @@ async function refreshFromNetwork() {
         .order('wongnai_rating', { ascending: false, nullsFirst: false })
       );
 
+      // No GPS — attach null _distanceMetres for consistency (used by MISSING-02)
       if (data) {
         data = data.map(r => ({ ...r, _distanceMetres: null }));
       }
@@ -173,6 +193,7 @@ async function refreshFromNetwork() {
     await setCached(CACHE_KEY, state.restaurants);
     applyFiltersAndSearch();
 
+    // Render map pins if map is currently visible
     if (state.activeView === 'map' && state.map) {
       state.map.invalidateSize();
       renderPins(state.filtered);
@@ -256,6 +277,16 @@ async function upsertPersonalData(restaurantId, updates) {
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
+/* ── Meal period checker ─────────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-08
+// Checks if a restaurant is open during a specific meal period (Asia/Bangkok)
+// Period ranges in minutes from midnight:
+//   breakfast:  00:00–10:30 (0–630)
+//   lunch:      11:00–15:00 (660–900)
+//   dinner:     17:00–22:00 (1020–1320)
+//   late_night: 22:00–27:00 (1320–1620, spans midnight)
+// opening_hours format: { mon: [{open:'11:00',close:'15:00'}], ... } — same as isOpenNow
+
 function isOpenDuringPeriod(period, opening_hours) {
   if (!opening_hours || !period) return false;
 
@@ -270,6 +301,7 @@ function isOpenDuringPeriod(period, opening_hours) {
   if (!range) return false;
   const [pStart, pEnd] = range;
 
+  // Get today's day key in Bangkok time
   const now = new Date();
   const dayKey = new Intl.DateTimeFormat('en-US', {
     weekday: 'short',
@@ -279,13 +311,15 @@ function isOpenDuringPeriod(period, opening_hours) {
   const daySlots = opening_hours[dayKey];
   if (!daySlots || !Array.isArray(daySlots) || daySlots.length === 0) return false;
 
+  // Check if ANY slot overlaps with the period window
   for (const slot of daySlots) {
     const [openH,  openM]  = (slot.open  || '').split(':').map(Number);
     const [closeH, closeM] = (slot.close || '').split(':').map(Number);
     if (isNaN(openH) || isNaN(closeH)) continue;
     const openMin  = openH  * 60 + openM;
     let   closeMin = closeH * 60 + closeM;
-    if (closeMin < openMin) closeMin += 24 * 60;
+    if (closeMin < openMin) closeMin += 24 * 60; // spans midnight
+    // Overlap test: open before period ends AND close after period starts
     if (openMin < pEnd && closeMin > pStart) return true;
   }
 
@@ -330,13 +364,15 @@ function isOpenNow(openingHours) {
       ? (currentMins >= openMins || currentMins < closeMins)
       : (currentMins >= openMins && currentMins < closeMins);
     if (isOpen) {
+      // closes_soon: within 30 minutes of closing (BUG-B2-02 fix)
       const minsToClose = closeMins >= currentMins
         ? closeMins - currentMins
-        : (closeMins + 1440) - currentMins;
+        : (closeMins + 1440) - currentMins; // wraps past midnight
       return minsToClose <= 30 ? 'closes_soon' : 'open';
     }
   }
 
+  // opens_soon: next opening is within 30 minutes (BUG-B2-02 fix)
   for (const slot of daySlots) {
     const [oh, om] = (slot.open || '').split(':').map(Number);
     if (isNaN(oh)) continue;

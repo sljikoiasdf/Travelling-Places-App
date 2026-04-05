@@ -2,20 +2,32 @@
 
 /* ── app-ui.js — formatters, navigation, card/photo/dish HTML, escapeHTML ── */
 
-/* ── Distance formatter ───────────────────────────────────────
-Spec: docs/design/MISSING_FEATURES.md — MISSING-02
-──────────────────────────────────────────────────── */
+/* ── Distance formatter ─────────────────────────────────────
+   Spec: docs/design/MISSING_FEATURES.md — MISSING-02
+   Returns a human-readable distance string based on metres and
+   location_precision tier. Walking speed: 80 m/min.
+   Precision values (per SCHEMA_GUIDE): 'exact', 'approximate', 'area_only'
+   ────────────────────────────────────────────────────────── */
 function formatDistance(metres, precision) {
+  // No location data — don't show a distance
   if (!precision || precision === 'no_location') return 'Find locally';
+
+  // Area-only: caller renders area name instead of distance
   if (precision === 'area_only') return null;
+
+  // No distance available (GPS denied or geom null)
   if (metres === null || metres === undefined) {
     if (precision === 'approximate') return 'Location approximate';
     return '';
   }
+
+  // CSS .card__distance--approximate::before adds '~' — do not add prefix here (BUG-B2-04 fix)
+
   if (metres < 1000) {
-    return `${Math.round(metres)} m`;
+    const m = Math.round(metres);
+    return `${m} m`;
   } else {
-    const km   = (metres / 1000).toFixed(1);
+    const km = (metres / 1000).toFixed(1);
     const mins = Math.max(1, Math.round(metres / 80));
     return `${km} km · ${mins} min walk`;
   }
@@ -25,8 +37,14 @@ function formatDistance(metres, precision) {
    NAVIGATION URLS
    ============================================================ */
 
+/* ── Navigation destination resolver ────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-03
+// Priority: exact/approximate coords → landmark coords → null
+// Returns { lat, lng, isApproximate, label } or null if no navigable destination
+
 function resolveNavDestination(restaurant) {
   const p = restaurant.location_precision;
+
   if ((p === 'exact' || p === 'approximate') && restaurant.lat && restaurant.lng) {
     return {
       lat: restaurant.lat,
@@ -35,6 +53,7 @@ function resolveNavDestination(restaurant) {
       label: p === 'approximate' ? 'Location approximate' : null
     };
   }
+
   if (restaurant.landmark_latitude && restaurant.landmark_longitude) {
     return {
       lat: restaurant.landmark_latitude,
@@ -43,18 +62,18 @@ function resolveNavDestination(restaurant) {
       label: 'Navigate to nearby landmark'
     };
   }
-  return null;
+
+  return null; // no navigable destination
 }
+
+/* ── Location block HTML builder ─────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-03
+// Renders cart-finder-box, landmark note, area/city, and directions button
 
 function locationBlockHTML(restaurant) {
   const p    = restaurant.location_precision;
   const dest = resolveNavDestination(restaurant);
   let html   = '';
-
-  // Street address — shown prominently when available
-  if (restaurant.address_en) {
-    html += `<p class="detail__address">${escapeHTML(restaurant.address_en)}</p>`;
-  }
 
   // Cart / no-location: show finder box prominently
   if (!p || p === 'no_location' || p === 'area_only') {
@@ -67,45 +86,21 @@ function locationBlockHTML(restaurant) {
     }
   }
 
-  // Nearby landmark
+  // Nearby landmark note
   if (restaurant.nearby_landmark_en) {
-    html += `<p class="landmark-note">Near ${escapeHTML(restaurant.nearby_landmark_en)}</p>`;
+    html += `<p class="landmark-note">Near: ${escapeHTML(restaurant.nearby_landmark_en)}</p>`;
   }
 
   // Area + city
   const areaCity = [
     restaurant.area ? restaurant.area.replace(/_/g, ' ') : null,
-    restaurant.city ? cityLabel(restaurant.city) : null
+    restaurant.city ? restaurant.city.replace(/_/g, ' ') : null
   ].filter(Boolean).join(', ');
   if (areaCity) html += `<p class="detail__area">${escapeHTML(areaCity)}</p>`;
 
-  // Contact — phone, website, Wongnai reviews (grouped with location info)
-  const contactItems = [];
-
-  if (restaurant.phone) {
-    const raw = restaurant.phone.replace(/\s+/g, '');
-    let display = raw;
-    const thaiMatch = raw.replace(/^\+66/, '0').match(/^(0\d{1,2})(\d{3,4})(\d{4})$/);
-    if (thaiMatch) display = `${thaiMatch[1]}-${thaiMatch[2]}-${thaiMatch[3]}`;
-    contactItems.push(`<a class="contact-link contact-link--phone" href="tel:${encodeURI(raw)}">&#128222; ${escapeHTML(display)}</a>`);
-  }
-
-  if (restaurant.website) {
-    let domain = 'Website';
-    try { domain = new URL(restaurant.website).hostname.replace(/^www\./, ''); } catch(e) { /* use fallback */ }
-    contactItems.push(`<a class="contact-link" href="${escapeHTML(restaurant.website)}" target="_blank" rel="noopener noreferrer">${escapeHTML(domain)} ↗</a>`);
-  }
-
-  if (restaurant.wongnai_url) {
-    contactItems.push(`<a class="contact-link" href="${escapeHTML(restaurant.wongnai_url)}" target="_blank" rel="noopener noreferrer">Wongnai reviews ↗</a>`);
-  }
-
-  if (contactItems.length > 0) {
-    html += `<div class="contact-row">${contactItems.join('')}</div>`;
-  }
-
   // Directions button — precision-aware
   if (dest) {
+    const navUrl = `https://maps.google.com/maps?q=${encodeURIComponent(dest.lat)},${encodeURIComponent(dest.lng)}(${encodeURIComponent(restaurant.name_en || restaurant.name_th || 'Restaurant')})`;
     const approxBadge = dest.isApproximate && dest.label
       ? `<span class="precision-badge">${escapeHTML(dest.label)}</span>`
       : '';
@@ -135,6 +130,15 @@ function mapsUrl(restaurant) {
   return `https://maps.google.com/maps?q=${query}`;
 }
 
+/* ── Navigation URL builder ─────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-04, MISSING-17
+// ARCHITECTURE.md Section 3.1 — URL formats
+// Returns: { apple, google, streetView } — all HTTPS except Apple Maps maps:// scheme
+// Apple Maps: maps:// scheme in <a href> — Safari hands off to Maps app natively
+// Google Maps: HTTPS Universal Link — works whether or not Google Maps is installed
+// Street View: HTTPS — only for exact precision coordinates
+// NEVER call window.open() — use <a href> anchors only
+
 function navUrls(restaurant) {
   const dest = resolveNavDestination(restaurant);
   let apple = null, google = null, streetView = null;
@@ -156,6 +160,10 @@ function navUrls(restaurant) {
   return { apple, google, streetView };
 }
 
+/* ── Navigation choice sheet ────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-04, MISSING-17
+// Shows bottom sheet with Apple Maps + Google Maps + optional Street View
+
 function showNavChoiceSheet(restaurant) {
   const urls = navUrls(restaurant);
   const dest = resolveNavDestination(restaurant);
@@ -166,18 +174,19 @@ function showNavChoiceSheet(restaurant) {
     ${approxLabel}
     <p class="nav-choice-sheet__title">Open with</p>
     <a href="${urls.apple}" class="nav-choice-btn">
-      <span>&#128506;</span> Apple Maps
+      <span>🗺</span> Apple Maps
     </a>
     <a href="${urls.google}" class="nav-choice-btn" target="_blank" rel="noopener">
-      <span>&#128205;</span> Google Maps
+      <span>📍</span> Google Maps
     </a>
-    ${urls.streetView ? `<a href="${urls.streetView}" class="street-view-link" target="_blank" rel="noopener">&#128247; Street View</a>` : ''}
+    ${urls.streetView ? `<a href="${urls.streetView}" class="street-view-link" target="_blank" rel="noopener">📷 Street View</a>` : ''}
     <button class="nav-choice-cancel" id="nav-choice-cancel">Cancel</button>
   `;
 
   const overlay = dom.navChoiceOverlay || document.getElementById('nav-choice-overlay');
   const sheet   = dom.navChoiceSheet   || document.getElementById('nav-choice-sheet');
   if (!overlay || !sheet) {
+    // Fallback if overlay not present
     window.location.href = urls.apple;
     return;
   }
@@ -241,6 +250,11 @@ function initKeyboardHandler() {
    CARD HTML
    ============================================================ */
 
+/* ── Dishes preview (card) ──────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-06
+// Compact one-line preview: "Must order: ข้าวมันไก่ · ไก่ทอด"
+// Signature dishes shown first. Max 2 dish names. Omitted if no dishes.
+
 function dishesPreviewHTML(dishes) {
   if (!dishes || !Array.isArray(dishes) || dishes.length === 0) return '';
   const sorted = [...dishes].sort((a, b) => (b.is_signature ? 1 : 0) - (a.is_signature ? 1 : 0));
@@ -250,6 +264,11 @@ function dishesPreviewHTML(dishes) {
     <span class="card__dishes-label">Must order:</span> ${escapeHTML(shown.join(' · '))}
   </div>`;
 }
+
+/* ── Dishes detail (full) ────────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-06
+// Full list of dishes with name_th, name_en, price_approx, notes, is_signature badge.
+// Section heading: "Known for". Omitted entirely if no dishes.
 
 function dishesDetailHTML(dishes) {
   if (!dishes || !Array.isArray(dishes) || dishes.length === 0) return '';
@@ -268,19 +287,31 @@ function dishesDetailHTML(dishes) {
   </section>`;
 }
 
+/* ── Star rating HTML builder ────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-09
+// interactive=false: read-only display on cards — returns '' if no rating
+// interactive=true: 5 tappable buttons on detail view — always shown
+// Tapping same star as current rating clears to null
+
 function starRatingHTML(rating, restaurantId, interactive = false) {
   if (!interactive && (!rating || rating === 0)) return '';
 
   const stars = [1, 2, 3, 4, 5].map(n => {
     const filled = rating && n <= rating;
     if (interactive) {
-      return `<button class="star-btn${filled ? ' star-btn--filled' : ''}" data-rating="${n}" data-restaurant-id="${restaurantId}" aria-label="${n} star${n > 1 ? 's' : ''}" aria-pressed="${filled ? 'true' : 'false'}">&#9733;</button>`;
+      return `<button class="star-btn${filled ? ' star-btn--filled' : ''}" data-rating="${n}" data-restaurant-id="${restaurantId}" aria-label="${n} star${n > 1 ? 's' : ''}" aria-pressed="${filled ? 'true' : 'false'}">★</button>`;
     }
-    return `<span class="star${filled ? ' star--filled' : ''}">&#9733;</span>`;
+    return `<span class="star${filled ? ' star--filled' : ''}">★</span>`;
   }).join('');
 
   return `<div class="star-rating${interactive ? ' star-rating--interactive' : ''}" role="${interactive ? 'group' : 'img'}" aria-label="Rating: ${rating || 0} out of 5">${stars}</div>`;
 }
+
+/* ── Personal notes HTML ─────────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-10
+// Textarea pre-filled with existing notes. Auto-saves with 1000ms debounce.
+// "Saved" indicator shows for 1.5s after successful write.
+// Offline: toast shown, save skipped.
 
 function personalNotesHTML(notes, restaurantId) {
   const safe = notes ? notes.replace(/</g, '&lt;') : '';
@@ -310,6 +341,11 @@ function attachPersonalNotesListener(restaurantId) {
   });
 }
 
+/* ── Contact row HTML builder ────────────────────────────── */
+// Phone + website only. Reviews/Wongnai moved to reviewSectionHTML.
+// Phone uses tel: URI — works offline (native iOS call).
+// Omitted entirely if both phone and website are null.
+
 function contactRowHTML(restaurant) {
   const items = [];
 
@@ -318,16 +354,12 @@ function contactRowHTML(restaurant) {
     let display = raw;
     const thaiMatch = raw.replace(/^\+66/, '0').match(/^(0\d{1,2})(\d{3,4})(\d{4})$/);
     if (thaiMatch) display = `${thaiMatch[1]}-${thaiMatch[2]}-${thaiMatch[3]}`;
-    items.push(`<a class="contact-link contact-link--phone" href="tel:${encodeURI(raw)}">&#128222; ${escapeHTML(display)}</a>`);
-  }
-
-  if (restaurant.wongnai_url) {
-    items.push(`<a class="contact-link" href="${escapeHTML(restaurant.wongnai_url)}" target="_blank" rel="noopener noreferrer">Wongnai reviews ↗</a>`);
+    items.push(`<a class="contact-link contact-link--phone" href="tel:${encodeURI(raw)}">📞 ${escapeHTML(display)}</a>`);
   }
 
   if (restaurant.website) {
-    let domain = 'Website';
-    try { domain = new URL(restaurant.website).hostname.replace(/^www\./, ''); } catch(e) { /* use fallback */ }
+    let domain = restaurant.website;
+    try { domain = new URL(restaurant.website).hostname.replace(/^www\./, ''); } catch (_) {}
     items.push(`<a class="contact-link" href="${escapeHTML(restaurant.website)}" target="_blank" rel="noopener noreferrer">${escapeHTML(domain)} ↗</a>`);
   }
 
@@ -335,13 +367,91 @@ function contactRowHTML(restaurant) {
   return `<div class="contact-row">${items.join('')}</div>`;
 }
 
+/* ── Reviews section HTML builder ───────────────────────── */
+// Combines all review sources into one "Reviews" section:
+// - wongnai_url (Thai restaurant review platform)
+// - source_url (AGFG, Broadsheet, Michelin etc — the page that led to inclusion)
+// - source_quote_th (Thai-language quote from source)
+// - Async placeholder for restaurant_sources table entries
+// Omitted entirely if no review data exists AND async placeholder not needed.
+
+function reviewSectionHTML(restaurant) {
+  const links = [];
+
+  // Wongnai — Thai restaurant review site
+  if (restaurant.wongnai_url) {
+    const rating = restaurant.wongnai_rating
+      ? ` · ${restaurant.wongnai_rating}/5`
+      : '';
+    links.push(`<a href="${escapeHTML(restaurant.wongnai_url)}" class="review-link" target="_blank" rel="noopener noreferrer">
+      <span class="review-link__body">
+        <span class="review-link__label">Wongnai reviews${rating}</span>
+        <span class="review-link__excerpt">Thai language restaurant reviews and ratings</span>
+      </span>
+      <span class="review-link__arrow">→</span>
+    </a>`);
+  }
+
+  // Source URL — the listing or guide page (AGFG, Broadsheet, Michelin etc)
+  if (restaurant.source_url) {
+    let sourceName = 'Source listing';
+    const url = restaurant.source_url.toLowerCase();
+    if (url.includes('agfg'))         sourceName = 'AGFG';
+    else if (url.includes('broadsheet'))  sourceName = 'Broadsheet';
+    else if (url.includes('michelin'))    sourceName = 'Michelin Guide';
+    else if (url.includes('timeout'))     sourceName = 'Time Out';
+    else if (url.includes('eater'))       sourceName = 'Eater';
+    else {
+      try { sourceName = new URL(restaurant.source_url).hostname.replace(/^www\./, ''); } catch (_) {}
+    }
+    links.push(`<a href="${escapeHTML(restaurant.source_url)}" class="review-link" target="_blank" rel="noopener noreferrer">
+      <span class="review-link__body">
+        <span class="review-link__label">${escapeHTML(sourceName)}</span>
+        <span class="review-link__excerpt">Listed on ${escapeHTML(sourceName)}</span>
+      </span>
+      <span class="review-link__arrow">→</span>
+    </a>`);
+  }
+
+  // Source quote (Thai) — editorial quote about the restaurant
+  const quoteHTML = restaurant.source_quote_th
+    ? `<div class="source-attribution">
+        <p class="source-attribution__quote">"${escapeHTML(restaurant.source_quote_th)}"</p>
+      </div>`
+    : '';
+
+  // Async placeholder for restaurant_sources entries
+  const asyncPlaceholder = `<div id="review-links-placeholder"></div>`;
+
+  // If nothing at all, still render the placeholder for async content
+  if (links.length === 0 && !restaurant.source_quote_th) {
+    return asyncPlaceholder;
+  }
+
+  return `<section class="review-links-section">
+    <div class="review-links-section__heading">Reviews</div>
+    ${links.join('')}
+    ${quoteHTML}
+    ${asyncPlaceholder}
+  </section>`;
+}
+
+/* ── Photo strip builder ────────────────────────────────── */
+// Spec: docs/design/MISSING_FEATURES.md — MISSING-05
+// Priority: identification_photo_url → cart/sign → exterior → dish/interior
+// Maximum 3 photos shown. Uses scroll-snap for swipe behaviour.
+// openBadgeHTML + overlaysHTML (city badge, wishlist, visited) are absolutely
+// positioned within the strip.
+
 function photoStripHTML(restaurant, openBadgeHTML, overlaysHTML) {
   const photos = [];
 
+  // Step 1: identification photo always first
   if (restaurant.identification_photo_url) {
     photos.push({ url: restaurant.identification_photo_url, type: 'identification' });
   }
 
+  // Step 2: sort restaurant.photos[] by type priority, de-dup against identification
   if (Array.isArray(restaurant.photos)) {
     const typePriority = { cart: 0, sign: 1, exterior: 2, dish: 3, interior: 4 };
     const sorted = [...restaurant.photos].sort((a, b) =>
@@ -354,6 +464,7 @@ function photoStripHTML(restaurant, openBadgeHTML, overlaysHTML) {
     });
   }
 
+  // No photos: render cuisine placeholder
   if (photos.length === 0) {
     const cuisineText = Array.isArray(restaurant.cuisine_types) && restaurant.cuisine_types.length
       ? restaurant.cuisine_types.slice(0, 2).map(c => c.replace(/_/g, ' ')).join(' · ')
@@ -365,6 +476,7 @@ function photoStripHTML(restaurant, openBadgeHTML, overlaysHTML) {
     </div>`;
   }
 
+  // Render strip — max 3 photos
   const slides = photos.slice(0, 3).map(p =>
     `<img class="card__photo-slide" src="${escapeHTML(p.url)}" alt="" loading="lazy" decoding="async">`
   ).join('');
@@ -392,28 +504,8 @@ function cityBadgeClass(city) {
 }
 
 function cityLabel(city) {
-  const map = {
-    bangkok:    'Bangkok',
-    chiang_mai: 'Chiang Mai',
-    koh_chang:  'Koh Chang',
-    melbourne:  'Melbourne',
-    sydney:     'Sydney',
-    brisbane:   'Brisbane',
-    perth:      'Perth',
-    adelaide:   'Adelaide',
-    canberra:   'Canberra',
-    hobart:     'Hobart',
-  };
-  return map[city] || (city ? escapeHTML(city.charAt(0).toUpperCase() + city.slice(1)) : '');
-}
-
-/* ── City-aware price currency ────────────────────────────────────
-Returns '$' for Australian cities, '฿' for everything else.
-Used in card price badges and detail view price row.
-──────────────────────────────────────────────────── */
-function priceCurrency(city) {
-  const ausCities = ['melbourne', 'sydney', 'brisbane', 'perth', 'adelaide', 'canberra', 'hobart'];
-  return ausCities.includes((city || '').toLowerCase()) ? '$' : '฿';
+  const map = { bangkok: 'Bangkok', chiang_mai: 'Chiang Mai', koh_chang: 'Koh Chang' };
+  return map[city] || escapeHTML(city);
 }
 
 function cardHTML(r) {
@@ -439,6 +531,8 @@ function cardHTML(r) {
     ? `<span class="visited-marker visited-marker--visited" aria-label="You've visited">✓ Visited</span>`
     : '';
 
+  // Build 2: Photo strip (MISSING-05)
+  // City abbreviation badge overlaid on photo strip
   const cityAbbrev = { bangkok: 'BKK', chiang_mai: 'CNX', koh_chang: 'KCH' };
   const cityCode = r.city ? (cityAbbrev[r.city] || cityLabel(r.city)) : '';
   const cityBadgeInStrip = cityCode ? `<span class="badge badge--city">${escapeHTML(cityCode)}</span>` : '';
@@ -451,15 +545,15 @@ function cardHTML(r) {
 
   const cuisineTag = Array.isArray(r.cuisine_types) && r.cuisine_types.length
     ? `<span class="badge badge--cuisine">${escapeHTML(r.cuisine_types[0].replace(/_/g, ' '))}</span>` : '';
-  const currency = priceCurrency(r.city);
   const priceTag = r.price_range
-    ? `<span class="badge badge--price" aria-label="Price range ${r.price_range}">${currency.repeat(r.price_range)}</span>` : '';
+    ? `<span class="badge badge--price" aria-label="Price range ${r.price_range}">${'฿'.repeat(r.price_range)}</span>` : '';
   const michelinTag = r.michelin_stars > 0
-    ? `<span class="badge badge--michelin">${'&#9733;'.repeat(r.michelin_stars)}</span>`
+    ? `<span class="badge badge--michelin">${'★'.repeat(r.michelin_stars)}</span>`
     : r.michelin_bib ? `<span class="badge badge--michelin">Bib</span>` : '';
   const halalTag = r.is_halal ? `<span class="badge badge--halal">Halal</span>` : '';
   const cityTag  = r.city ? `<span class="badge ${cityBadgeClass(r.city)}">${cityLabel(r.city)}</span>` : '';
 
+  // Build 2: Distance display (MISSING-02)
   const precision = r.location_precision || 'no_location';
   let distanceText = '';
   if (precision === 'area_only') {

@@ -338,65 +338,54 @@ function applyView(view) {
   }
 }
 
-/* ── Source attribution HTML builder ────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-15
-// Renders the Thai-language source quote with a link to source_url.
-// Omitted entirely when source_quote_th is null.
-
-function sourceAttributionHTML(restaurant) {
-  if (!restaurant.source_quote_th) return '';
-
-  const link = restaurant.source_url
-    ? `<a href="${escapeHTML(restaurant.source_url)}" target="_blank" rel="noopener noreferrer" class="source-attribution__credit">As described by source ↗</a>`
-    : '';
-
-  return `<div class="source-attribution">
-    <p class="source-attribution__quote">"${escapeHTML(restaurant.source_quote_th)}"</p>
-    ${link}
-  </div>`;
-}
-
 /**
- * reviewLinksHTML — renders writer and food_press source links in the detail view.
- * Only writer and food_press tier rows from restaurant_sources are shown.
- * Fetches asynchronously after detail view renders.
- * @param {string} restaurantId — uuid of the restaurant
- * @returns {Promise<string>} HTML string (empty string if no writer/food_press sources)
+ * reviewLinksHTML — fetches review links from restaurant_sources table.
+ * No tier filter — shows all sources that have a URL.
+ * Sources without URLs are shown as attribution text ("Recommended by...").
+ * Injected async into the Reviews section placeholder.
+ * @param {string} restaurantId
+ * @returns {Promise<string>} HTML string (empty if no sources at all)
  */
 async function reviewLinksHTML(restaurantId) {
-  // Only writer and food_press tiers are readable articles — shown to users.
-  // local_platform, google, tripadvisor are backend signals, not article links.
   const { data: sources, error } = await db
     .from('restaurant_sources')
     .select('url, excerpt, language, source_tier, sources(name)')
     .eq('restaurant_id', restaurantId)
-    .in('source_tier', ['writer', 'food_press'])
-    .not('url', 'is', null)
-    .order('language')          // 'en' sorts before 'th'
-    .limit(6);                  // cap at 6 article links
+    .order('language')
+    .limit(10);
 
   if (error || !sources || sources.length === 0) return '';
 
-  const links = sources.map(s => {
-    const label = s.sources?.name || 'Read more';
-    const excerpt = s.excerpt
-      ? `<span class="review-link__excerpt">${escapeHTML(s.excerpt)}</span>`
-      : '';
-    return `
-      <a href="${escapeHTML(s.url)}" class="review-link" target="_blank" rel="noopener noreferrer">
+  // Split into linkable sources and attribution-only sources
+  const withUrl    = sources.filter(s => s.url);
+  const withoutUrl = sources.filter(s => !s.url && s.sources?.name);
+
+  let html = '';
+
+  // Render clickable review links
+  if (withUrl.length > 0) {
+    html += withUrl.map(s => {
+      const label = s.sources?.name || 'Review';
+      const excerpt = s.excerpt
+        ? `<span class="review-link__excerpt">${escapeHTML(s.excerpt)}</span>`
+        : '';
+      return `<a href="${escapeHTML(s.url)}" class="review-link" target="_blank" rel="noopener noreferrer">
         <span class="review-link__body">
           <span class="review-link__label">${escapeHTML(label)}</span>
           ${excerpt}
         </span>
         <span class="review-link__arrow">→</span>
       </a>`;
-  }).join('');
+    }).join('');
+  }
 
-  return `
-    <div class="review-links-section">
-      <div class="review-links-section__heading">Read about this place</div>
-      ${links}
-    </div>`;
+  // Render attribution for sources without direct links
+  if (withoutUrl.length > 0) {
+    const names = withoutUrl.map(s => s.sources.name);
+    html += `<p class="review-links-section__attribution">Recommended by ${escapeHTML(names.join(', '))}</p>`;
+  }
+
+  return html;
 }
 
 /* ── Detail page ──────────────────────────────────────────── */
