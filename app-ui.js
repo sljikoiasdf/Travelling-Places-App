@@ -2,9 +2,9 @@
 
 /* ── app-ui.js — formatters, navigation, card/photo/dish HTML, escapeHTML ── */
 
-/* ── Distance formatter ─────────────────────────────────────
-   Spec: docs/design/MISSING_FEATURES.md — MISSING-02
-   ────────────────────────────────────────────────────────── */
+/* ── Distance formatter ───────────────────────────────────────
+Spec: docs/design/MISSING_FEATURES.md — MISSING-02
+──────────────────────────────────────────────────── */
 function formatDistance(metres, precision) {
   if (!precision || precision === 'no_location') return 'Find locally';
   if (precision === 'area_only') return null;
@@ -51,7 +51,7 @@ function locationBlockHTML(restaurant) {
   const dest = resolveNavDestination(restaurant);
   let html   = '';
 
-  // Address — shown prominently when available (street address, not area)
+  // Street address — shown prominently when available
   if (restaurant.address_en) {
     html += `<p class="detail__address">${escapeHTML(restaurant.address_en)}</p>`;
   }
@@ -67,9 +67,9 @@ function locationBlockHTML(restaurant) {
     }
   }
 
-  // Nearby landmark note
+  // Nearby landmark
   if (restaurant.nearby_landmark_en) {
-    html += `<p class="landmark-note">Near: ${escapeHTML(restaurant.nearby_landmark_en)}</p>`;
+    html += `<p class="landmark-note">Near ${escapeHTML(restaurant.nearby_landmark_en)}</p>`;
   }
 
   // Area + city
@@ -79,9 +79,33 @@ function locationBlockHTML(restaurant) {
   ].filter(Boolean).join(', ');
   if (areaCity) html += `<p class="detail__area">${escapeHTML(areaCity)}</p>`;
 
+  // Contact — phone, website, Wongnai reviews (grouped with location info)
+  const contactItems = [];
+
+  if (restaurant.phone) {
+    const raw = restaurant.phone.replace(/\s+/g, '');
+    let display = raw;
+    const thaiMatch = raw.replace(/^\+66/, '0').match(/^(0\d{1,2})(\d{3,4})(\d{4})$/);
+    if (thaiMatch) display = `${thaiMatch[1]}-${thaiMatch[2]}-${thaiMatch[3]}`;
+    contactItems.push(`<a class="contact-link contact-link--phone" href="tel:${encodeURI(raw)}">&#128222; ${escapeHTML(display)}</a>`);
+  }
+
+  if (restaurant.website) {
+    let domain = 'Website';
+    try { domain = new URL(restaurant.website).hostname.replace(/^www\./, ''); } catch(e) { /* use fallback */ }
+    contactItems.push(`<a class="contact-link" href="${escapeHTML(restaurant.website)}" target="_blank" rel="noopener noreferrer">${escapeHTML(domain)} ↗</a>`);
+  }
+
+  if (restaurant.wongnai_url) {
+    contactItems.push(`<a class="contact-link" href="${escapeHTML(restaurant.wongnai_url)}" target="_blank" rel="noopener noreferrer">Wongnai reviews ↗</a>`);
+  }
+
+  if (contactItems.length > 0) {
+    html += `<div class="contact-row">${contactItems.join('')}</div>`;
+  }
+
   // Directions button — precision-aware
   if (dest) {
-    const navUrl = `https://maps.google.com/maps?q=${encodeURIComponent(dest.lat)},${encodeURIComponent(dest.lng)}(${encodeURIComponent(restaurant.name_en || restaurant.name_th || 'Restaurant')})`;
     const approxBadge = dest.isApproximate && dest.label
       ? `<span class="precision-badge">${escapeHTML(dest.label)}</span>`
       : '';
@@ -142,12 +166,12 @@ function showNavChoiceSheet(restaurant) {
     ${approxLabel}
     <p class="nav-choice-sheet__title">Open with</p>
     <a href="${urls.apple}" class="nav-choice-btn">
-      <span>🗺</span> Apple Maps
+      <span>&#128506;</span> Apple Maps
     </a>
     <a href="${urls.google}" class="nav-choice-btn" target="_blank" rel="noopener">
-      <span>📍</span> Google Maps
+      <span>&#128205;</span> Google Maps
     </a>
-    ${urls.streetView ? `<a href="${urls.streetView}" class="street-view-link" target="_blank" rel="noopener">📷 Street View</a>` : ''}
+    ${urls.streetView ? `<a href="${urls.streetView}" class="street-view-link" target="_blank" rel="noopener">&#128247; Street View</a>` : ''}
     <button class="nav-choice-cancel" id="nav-choice-cancel">Cancel</button>
   `;
 
@@ -250,9 +274,9 @@ function starRatingHTML(rating, restaurantId, interactive = false) {
   const stars = [1, 2, 3, 4, 5].map(n => {
     const filled = rating && n <= rating;
     if (interactive) {
-      return `<button class="star-btn${filled ? ' star-btn--filled' : ''}" data-rating="${n}" data-restaurant-id="${restaurantId}" aria-label="${n} star${n > 1 ? 's' : ''}" aria-pressed="${filled ? 'true' : 'false'}">★</button>`;
+      return `<button class="star-btn${filled ? ' star-btn--filled' : ''}" data-rating="${n}" data-restaurant-id="${restaurantId}" aria-label="${n} star${n > 1 ? 's' : ''}" aria-pressed="${filled ? 'true' : 'false'}">&#9733;</button>`;
     }
-    return `<span class="star${filled ? ' star--filled' : ''}">★</span>`;
+    return `<span class="star${filled ? ' star--filled' : ''}">&#9733;</span>`;
   }).join('');
 
   return `<div class="star-rating${interactive ? ' star-rating--interactive' : ''}" role="${interactive ? 'group' : 'img'}" aria-label="Rating: ${rating || 0} out of 5">${stars}</div>`;
@@ -294,11 +318,11 @@ function contactRowHTML(restaurant) {
     let display = raw;
     const thaiMatch = raw.replace(/^\+66/, '0').match(/^(0\d{1,2})(\d{3,4})(\d{4})$/);
     if (thaiMatch) display = `${thaiMatch[1]}-${thaiMatch[2]}-${thaiMatch[3]}`;
-    items.push(`<a class="contact-link contact-link--phone" href="tel:${encodeURI(raw)}">📞 ${escapeHTML(display)}</a>`);
+    items.push(`<a class="contact-link contact-link--phone" href="tel:${encodeURI(raw)}">&#128222; ${escapeHTML(display)}</a>`);
   }
 
   if (restaurant.wongnai_url) {
-    items.push(`<a class="contact-link" href="${escapeHTML(restaurant.wongnai_url)}" target="_blank" rel="noopener noreferrer">View on Wongnai ↗</a>`);
+    items.push(`<a class="contact-link" href="${escapeHTML(restaurant.wongnai_url)}" target="_blank" rel="noopener noreferrer">Wongnai reviews ↗</a>`);
   }
 
   if (restaurant.website) {
@@ -383,10 +407,10 @@ function cityLabel(city) {
   return map[city] || (city ? escapeHTML(city.charAt(0).toUpperCase() + city.slice(1)) : '');
 }
 
-/* ── City-aware price currency ──────────────────────────────
-   Returns '$' for Australian cities, '฿' for everything else.
-   Used in card price badges and detail view price row.
-   ────────────────────────────────────────────────────────── */
+/* ── City-aware price currency ────────────────────────────────────
+Returns '$' for Australian cities, '฿' for everything else.
+Used in card price badges and detail view price row.
+──────────────────────────────────────────────────── */
 function priceCurrency(city) {
   const ausCities = ['melbourne', 'sydney', 'brisbane', 'perth', 'adelaide', 'canberra', 'hobart'];
   return ausCities.includes((city || '').toLowerCase()) ? '$' : '฿';
@@ -431,7 +455,7 @@ function cardHTML(r) {
   const priceTag = r.price_range
     ? `<span class="badge badge--price" aria-label="Price range ${r.price_range}">${currency.repeat(r.price_range)}</span>` : '';
   const michelinTag = r.michelin_stars > 0
-    ? `<span class="badge badge--michelin">${'★'.repeat(r.michelin_stars)}</span>`
+    ? `<span class="badge badge--michelin">${'&#9733;'.repeat(r.michelin_stars)}</span>`
     : r.michelin_bib ? `<span class="badge badge--michelin">Bib</span>` : '';
   const halalTag = r.is_halal ? `<span class="badge badge--halal">Halal</span>` : '';
   const cityTag  = r.city ? `<span class="badge ${cityBadgeClass(r.city)}">${cityLabel(r.city)}</span>` : '';

@@ -35,7 +35,7 @@ function renderDetailPage(r) {
     ? Object.entries(dayNames).map(([key, label]) =>
         `<div class="detail-row"><span class="detail-row__label">${label}</span><span class="detail-row__value">${formatDayHours(r.opening_hours[key])}</span></div>`
       ).join('')
-    : '<div class="detail-row"><span class="detail-row__value">Hours not available</span></div>';
+    : '<div class="detail-row"><span class="detail-row__value">Hours not listed</span></div>';
 
   const cuisineDisplay = Array.isArray(r.cuisine_types)
     ? r.cuisine_types.map(c => c.replace(/_/g, ' ')).join(', ') : '';
@@ -49,7 +49,8 @@ function renderDetailPage(r) {
     detailDistance = `<span class="precision-badge">Find locally</span>`;
   } else {
     const fd = formatDistance(r._distanceMetres, detailPrecision);
-    if (fd) {
+    // Skip "Location approximate" in meta-row — shown near the Get Directions button
+    if (fd && fd !== 'Location approximate') {
       const approxPrefix = detailPrecision === 'approximate' ? '~' : '';
       detailDistance = `<span class="precision-badge">${approxPrefix}${fd}</span>`;
     }
@@ -74,14 +75,12 @@ function renderDetailPage(r) {
 
       ${locationBlockHTML(r)}
 
-      ${contactRowHTML(r)}
-
       <div class="detail-section">
         ${cuisineDisplay ? `<div class="detail-row"><span class="detail-row__label">Cuisine</span><span class="detail-row__value">${escapeHTML(cuisineDisplay)}</span></div>` : ''}
         ${r.city ? `<div class="detail-row"><span class="detail-row__label">City</span><span class="detail-row__value">${cityLabel(r.city)}${r.area ? ` — ${escapeHTML(r.area.replace(/_/g, ' '))}` : ''}</span></div>` : ''}
         ${r.price_range ? `<div class="detail-row"><span class="detail-row__label">Price</span><span class="detail-row__value">${priceSymbol.repeat(r.price_range)}</span></div>` : ''}
         ${r.is_halal ? `<div class="detail-row"><span class="detail-row__label">Halal</span><span class="detail-row__value">Yes ✓</span></div>` : ''}
-        ${r.michelin_stars > 0 ? `<div class="detail-row"><span class="detail-row__label">Michelin</span><span class="detail-row__value">${'★'.repeat(r.michelin_stars)} Star${r.michelin_stars > 1 ? 's' : ''}</span></div>` : r.michelin_bib ? `<div class="detail-row"><span class="detail-row__label">Michelin</span><span class="detail-row__value">Bib Gourmand</span></div>` : ''}
+        ${r.michelin_stars > 0 ? `<div class="detail-row"><span class="detail-row__label">Michelin</span><span class="detail-row__value">${'&#9733;'.repeat(r.michelin_stars)} Star${r.michelin_stars > 1 ? 's' : ''}</span></div>` : r.michelin_bib ? `<div class="detail-row"><span class="detail-row__label">Michelin</span><span class="detail-row__value">Bib Gourmand</span></div>` : ''}
         ${r.description_en ? `<div class="detail-row"><span class="detail-row__label">About</span><span class="detail-row__value">${escapeHTML(r.description_en)}</span></div>` : ''}
       </div>
 
@@ -103,7 +102,7 @@ function renderDetailPage(r) {
       </div>
 
       <div class="detail-section">
-        <div class="detail-row detail-row--header"><span class="detail-row__label">Opening Hours</span></div>
+        <div class="detail-row detail-row--header"><span class="detail-row__label">Opening hours</span></div>
         ${hoursRows}
       </div>
 
@@ -136,7 +135,7 @@ function hideDetailPage() {
   state.selectedId = null;
 }
 
-/* ── Toast ─────────────────────────────────────────────────── */
+/* ── Toast ──────────────────────────────────────────────────────────── */
 
 function showToast(message, type = 'info') {
   const toast = document.createElement('div');
@@ -151,7 +150,7 @@ function showToast(message, type = 'info') {
   }, 3500);
 }
 
-/* ── Hours formatting ────────────────────────────────────── */
+/* ── Hours formatting ──────────────────────────────────────────────── */
 
 function formatHoursSlot(slot) {
   if (!slot || typeof slot !== 'object') return '';
@@ -164,7 +163,7 @@ function formatDayHours(daySlots) {
   return daySlots.map(formatHoursSlot).join(', ');
 }
 
-/* ── Event listeners ─────────────────────────────────────── */
+/* ── Event listeners ──────────────────────────────────────────────── */
 
 function attachEventListeners() {
   // Card tap → navigate to detail page
@@ -289,7 +288,7 @@ function attachEventListeners() {
     applyFiltersAndSearch();
   });
 
-  /* ── Sort sheet ──────────────────────────────────────────── */
+  /* ── Sort sheet ──────────────────────────────────────────────────── */
   function showSortSheet() {
     const options = [
       { key: 'nearest', label: 'Nearest first', disabled: state.locationStatus !== 'granted' },
@@ -325,7 +324,7 @@ function attachEventListeners() {
 
   dom.sortBtn?.addEventListener('click', showSortSheet);
 
-  /* ── Pull-to-refresh ─────────────────────────────────────── */
+  /* ── Pull-to-refresh ──────────────────────────────────────────────────── */
   (function initPullToRefresh() {
     const listContainer = dom.cardList?.parentElement;
     if (!listContainer) return;
@@ -417,7 +416,7 @@ async function handlePersonalToggle(id, action) {
   }
 }
 
-/* ── Init ───────────────────────────────────────────────────── */
+/* ── Init ─────────────────────────────────────────────────────────────── */
 
 async function init() {
   state.personalId = getOrCreatePersonalId();
