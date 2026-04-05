@@ -1,0 +1,351 @@
+/* THAILAND FOOD GUIDE — styles.css */
+
+/* COLOUR TOKENS */
+
+:root {
+  --color-bg-base:           #0E0E0E;
+  --color-bg-surface:        #181818;
+  --color-bg-elevated:       #222222;
+  --color-bg-overlay:        rgba(14,14,14,0.85);
+  --color-bg-skeleton:       #1E1E1E;
+  --color-bg-skeleton-shine: #2A2A2A;
+
+  --color-accent-gold:        #C9A84C;
+  --color-accent-gold-light:  #E2C97A;
+  --color-accent-gold-muted:  #8C6F2E;
+  --color-accent-gold-subtle: rgba(201,168,76,0.10);
+
+  --color-text-primary:     #EAE2D2;
+  --color-text-secondary:   #A8957C;
+  --color-text-tertiary:    #6B5F52;
+  --color-text-inverse:     #0E0E0E;
+  --color-text-placeholder: #5A5049;
+
+  --color-status-open:         #4CAF50;
+  --color-status-open-text:    #0D1F0E;
+  --color-status-closed:       #E53935;
+  --color-status-closed-text:  #1F0D0D;
+  --color-status-soon:         #F57C00;
+  --color-status-soon-text:    #1A0F00;
+  --color-status-unknown:      #4A4440;
+  --color-status-unknown-text: #A89880;
+
+  --color-city-bangkok:   #2E78B5;
+  --color-city-chiangmai: #2E8B57;
+  --color-city-kohchang:  #C87941;
+
+  --color-border:             rgba(255,255,255,0.07);
+  --color-border-focus:       #C9A84C;
+  --color-interactive-pressed: rgba(201,168,76,0.15);
+  --color-halal-badge:        #2E8B57;
+  --color-michelin-badge:     #C9A84C;
+}
+
+/* TYPOGRAPHY TOKENS */
+
+:root {
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body:    'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-thai:    'Noto Sans Thai', 'DM Sans', sans-serif;
+
+  --text-xs:   12px;   /* Source attribution, fine print, badge labels */
+  --text-sm:   13px;   /* Secondary meta: area name, cuisine tags, price tier */
+  --text-base: 16px;   /* All body text, card descriptions, search input */
+  --text-md:   17px;   /* Thai secondary text, opening hours, key details */
+  --text-lg:   19px;   /* English restaurant name on card */
+  --text-xl:   22px;   /* Thai restaurant name in Playfair Display */
+  --text-2xl:  26px;   /* Screen title */
+  --text-3xl:  32px;   /* Detail screen heading */
+}
+
+/* SPACING SCALE */
+
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+}
+
+/* ── BASE STYLES ─────────────────────────────────────────── */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ── MAP CONTAINER ───────────────────────────────────────── */
+
+#map {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.leaflet-container {
+  background: var(--color-bg-base);
+  font-family: var(--font-body);
+}
+
+/* ── MAP LEGEND ──────────────────────────────────────────── */
+
+.map-legend {
+  background: var(--color-bg-elevated);
+  padding: var(--space-3);
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-1) 0;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* ── PIN LABELS ──────────────────────────────────────────── */
+
+.pin-label {
+  background: var(--color-bg-elevated) !important;
+  color: var(--color-text-primary) !important;
+  border: 1px solid var(--color-border) !important;
+  padding: var(--space-2) var(--space-3) !important;
+  border-radius: 4px !important;
+  font-size: var(--text-sm) !important;
+  white-space: nowrap;
+  max-width: 150px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.leaflet-tooltip-bottom::before {
+  border-bottom-color: var(--color-bg-elevated) !important;
+}
+
+/* ── CLUSTER LABELS ──────────────────────────────────────── */
+
+.cluster-label {
+  background: transparent !important;
+  color: var(--color-text-primary) !important;
+  border: none !important;
+  padding: 0 !important;
+  font-size: var(--text-base) !important;
+  font-weight: bold;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
+}
+
+/* ── DETAIL VIEW ─────────────────────────────────────────── */
+
+#detail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--color-bg-base);
+  z-index: 1000;
+  display: none;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+#detail.active {
+  display: flex;
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+}
+
+.back-btn {
+  background: none;
+  border: none;
+  color: var(--color-accent-gold);
+  font-size: var(--text-base);
+  cursor: pointer;
+  padding: var(--space-2);
+}
+
+.detail-content {
+  flex: 1;
+  padding: var(--space-6);
+  overflow-y: auto;
+}
+
+.detail-content p {
+  margin: var(--space-4) 0;
+  font-size: var(--text-base);
+}
+
+.detail-content a {
+  color: var(--color-accent-gold);
+  text-decoration: none;
+}
+
+/* ── CONTROL BUTTONS ─────────────────────────────────────── */
+
+.map-controls {
+  position: absolute;
+  top: var(--space-4);
+  left: var(--space-4);
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.map-btn {
+  width: 40px;
+  height: 40px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-size: var(--text-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 200ms ease;
+}
+
+.map-btn:active {
+  background: var(--color-interactive-pressed);
+}
+
+/* ── CITY PICKER ─────────────────────────────────────────── */
+
+#cities {
+  position: absolute;
+  bottom: var(--space-4);
+  left: var(--space-4);
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+#cities button {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all 200ms ease;
+  white-space: nowrap;
+}
+
+#cities button:active {
+  background: var(--color-interactive-pressed);
+  border-color: var(--color-accent-gold);
+}
+
+/* ── FILTERS PANEL ───────────────────────────────────────── */
+
+#filters {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 500;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: var(--space-4);
+  max-width: 200px;
+  max-height: 400px;
+  overflow-y: auto;
+  display: none;
+}
+
+#filters.open {
+  display: block;
+}
+
+#filter-btn {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 501;
+  width: 40px;
+  height: 40px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text-primary);
+  font-size: var(--text-base);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 200ms ease;
+}
+
+#filter-btn:active {
+  background: var(--color-interactive-pressed);
+}
+
+/* ── LEAFLET OVERRIDES ───────────────────────────────────── */
+
+.leaflet-control {
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.leaflet-control-attribution {
+  background: rgba(14, 14, 14, 0.7) !important;
+  border-radius: 4px !important;
+}
+
+/* ── RESPONSIVE ──────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  :root {
+    --text-base: 15px;
+    --space-4: 12px;
+  }
+
+  .map-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  #cities button {
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-xs);
+  }
+}
