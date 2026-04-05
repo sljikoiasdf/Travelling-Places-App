@@ -453,9 +453,11 @@ async function init() {
   }
 
   // Centre map on user location if GPS was granted
+  // Only centre — do NOT fitMapToPins here because cached data may include
+  // restaurants from other cities (e.g. Thailand + Melbourne) causing the
+  // map to zoom out to fit everything. City-level zoom is more useful.
   if (state.locationStatus === 'granted' && state.userLat && state.userLng) {
     centreMapOnUser();
-    if (state.map && state.mapPins.size > 0) fitMapToPins();
   }
 
   // Handle any route that was pending (restaurant detail before data loaded)

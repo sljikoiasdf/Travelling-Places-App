@@ -2,7 +2,7 @@
 
 /* ── app-ui.js — formatters, navigation, card/photo/dish HTML, escapeHTML ── */
 
-/* ── Distance formatter ─────────────────────────────────────
+/* ── Distance formatter ───────────────────────────────────
    Spec: docs/design/MISSING_FEATURES.md — MISSING-02
    Returns a human-readable distance string based on metres and
    location_precision tier. Walking speed: 80 m/min.
@@ -66,7 +66,7 @@ function resolveNavDestination(restaurant) {
   return null; // no navigable destination
 }
 
-/* ── Location & contact block ────────────────────────────── */
+/* ── Location & contact block ──────────────────────────── */
 // Unified section: location label, area/city, landmark, precision badge,
 // phone, website, cart finder, and dual direction buttons.
 // Design tokens: VISUAL_TOKENS.md. No emojis. Compact layout.
@@ -157,7 +157,7 @@ function mapsUrl(restaurant) {
   return `https://maps.google.com/maps?q=${query}`;
 }
 
-/* ── Navigation URL builder ─────────────────────────────── */
+/* ── Navigation URL builder ───────────────────────────── */
 // Spec: docs/design/MISSING_FEATURES.md — MISSING-04, MISSING-17
 // ARCHITECTURE.md Section 3.1 — URL formats
 // Returns: { apple, google, streetView } — all HTTPS except Apple Maps maps:// scheme
@@ -187,7 +187,7 @@ function navUrls(restaurant) {
   return { apple, google, streetView };
 }
 
-/* ── Navigation choice sheet ────────────────────────────── */
+/* ── Navigation choice sheet ──────────────────────────── */
 // Spec: docs/design/MISSING_FEATURES.md — MISSING-04, MISSING-17
 // Shows bottom sheet with Apple Maps + Google Maps + optional Street View
 
@@ -314,7 +314,7 @@ function dishesDetailHTML(dishes) {
   </section>`;
 }
 
-/* ── Star rating HTML builder ────────────────────────────── */
+/* ── Star rating HTML builder ──────────────────────────── */
 // Spec: docs/design/MISSING_FEATURES.md — MISSING-09
 // interactive=false: read-only display on cards — returns '' if no rating
 // interactive=true: 5 tappable buttons on detail view — always shown
@@ -326,9 +326,9 @@ function starRatingHTML(rating, restaurantId, interactive = false) {
   const stars = [1, 2, 3, 4, 5].map(n => {
     const filled = rating && n <= rating;
     if (interactive) {
-      return `<button class="star-btn${filled ? ' star-btn--filled' : ''}" data-rating="${n}" data-restaurant-id="${restaurantId}" aria-label="${n} star${n > 1 ? 's' : ''}" aria-pressed="${filled ? 'true' : 'false'}">★</button>`;
+      return `<button class="star-btn${filled ? ' star-btn--filled' : ''}" data-rating="${n}" data-restaurant-id="${restaurantId}" aria-label="${n} star${n > 1 ? 's' : ''}" aria-pressed="${filled ? 'true' : 'false'}">\u2605</button>`;
     }
-    return `<span class="star${filled ? ' star--filled' : ''}">★</span>`;
+    return `<span class="star${filled ? ' star--filled' : ''}">\u2605</span>`;
   }).join('');
 
   return `<div class="star-rating${interactive ? ' star-rating--interactive' : ''}" role="${interactive ? 'group' : 'img'}" aria-label="Rating: ${rating || 0} out of 5">${stars}</div>`;
@@ -344,7 +344,7 @@ function personalNotesHTML(notes, restaurantId) {
   const safe = notes ? notes.replace(/</g, '&lt;') : '';
   return `<div class="personal-notes">
     <label class="personal-notes__label" for="personal-notes-${restaurantId}">Your notes</label>
-    <textarea class="personal-notes__input" id="personal-notes-${restaurantId}" data-restaurant-id="${restaurantId}" placeholder="Add your own notes…" rows="3">${safe}</textarea>
+    <textarea class="personal-notes__input" id="personal-notes-${restaurantId}" data-restaurant-id="${restaurantId}" placeholder="Add your own notes\u2026" rows="3">${safe}</textarea>
     <span class="personal-notes__saved" id="personal-notes-saved-${restaurantId}">Saved</span>
   </div>`;
 }
@@ -371,7 +371,7 @@ function attachPersonalNotesListener(restaurantId) {
 /* ── Contact row HTML builder (DEPRECATED — content merged into locationBlockHTML) ── */
 function contactRowHTML(_restaurant) { return ''; }
 
-/* ── Reviews section HTML builder ───────────────────────── */
+/* ── Reviews section HTML builder ─────────────────────────── */
 // All review links live in the restaurant_sources table.
 // This renders the section shell; the async reviewLinksHTML() populates it.
 // source_quote_th (if present) is rendered inline as an editorial quote.
@@ -458,13 +458,13 @@ function escapeHTML(str) {
 }
 
 function cityBadgeClass(city) {
-  const map = { bangkok: 'badge--bangkok', chiang_mai: 'badge--chiangmai', koh_chang: 'badge--kohchang' };
+  const map = { bangkok: 'badge--bangkok', chiang_mai: 'badge--chiangmai', koh_chang: 'badge--kohchang', melbourne: 'badge--melbourne' };
   return map[city] || '';
 }
 
 function cityLabel(city) {
-  const map = { bangkok: 'Bangkok', chiang_mai: 'Chiang Mai', koh_chang: 'Koh Chang' };
-  return map[city] || escapeHTML(city);
+  const map = { bangkok: 'Bangkok', chiang_mai: 'Chiang Mai', koh_chang: 'Koh Chang', melbourne: 'Melbourne' };
+  return map[city] || escapeHTML(city.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
 }
 
 function cardHTML(r) {
@@ -492,7 +492,7 @@ function cardHTML(r) {
 
   // Build 2: Photo strip (MISSING-05)
   // City abbreviation badge overlaid on photo strip
-  const cityAbbrev = { bangkok: 'BKK', chiang_mai: 'CNX', koh_chang: 'KCH' };
+  const cityAbbrev = { bangkok: 'BKK', chiang_mai: 'CNX', koh_chang: 'KCH', melbourne: 'MEL' };
   const cityCode = r.city ? (cityAbbrev[r.city] || cityLabel(r.city)) : '';
   const cityBadgeInStrip = cityCode ? `<span class="badge badge--city">${escapeHTML(cityCode)}</span>` : '';
 
