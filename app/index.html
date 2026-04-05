@@ -20,8 +20,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&family=Noto+Sans+Thai:wght@300;400;500;600&display=swap" rel="stylesheet">
 
   <!-- Leaflet CSS -->
-  <!-- SRI intentionally omitted: Service Worker caches this asset via cache.addAll();
-       opaque cross-origin cached responses fail SRI checks silently, blocking Leaflet load. -->
   <link rel="stylesheet"
         href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
@@ -36,11 +34,12 @@
     <!-- Main content area — fills between filter bar and nav -->
     <main class="app-content" id="app-content">
 
-      <!-- LIST VIEW (default active) -->
-      <div class="view view--active"
+      <!-- LIST VIEW -->
+      <div class="view"
            id="view-list"
            role="main"
-           aria-label="Restaurant list">
+           aria-label="Restaurant list"
+           aria-hidden="true">
 
         <!-- Filter bar — sticky within the list view scroll container -->
         <div class="filter-bar" id="filter-bar">
@@ -48,7 +47,6 @@
                id="filter-chips"
                role="group"
                aria-label="Filters">
-            <!-- Filter chips injected by JS -->
           </div>
         </div>
 
@@ -82,7 +80,7 @@
                hidden>
           </div>
 
-          <!-- Empty state — shown when filters return zero results -->
+          <!-- Empty state -->
           <div class="empty-state" id="empty-state" hidden>
             <svg class="empty-state__icon"
                  aria-hidden="true"
@@ -100,28 +98,46 @@
         </div>
       </div>
 
-      <!-- MAP VIEW -->
-      <div class="view"
+      <!-- MAP VIEW (default active) -->
+      <div class="view view--active"
            id="view-map"
            role="main"
-           aria-label="Restaurant map"
-           aria-hidden="true">
+           aria-label="Restaurant map">
         <div class="map-container" id="map"></div>
+      </div>
+
+      <!-- DETAIL VIEW — slides over map/list -->
+      <div class="view-detail"
+           id="view-detail"
+           role="main"
+           aria-label="Restaurant detail"
+           aria-hidden="true">
+        <div class="view-detail__header">
+          <button class="view-detail__back" id="detail-back" aria-label="Go back">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+          </button>
+          <h1 class="view-detail__title" id="detail-title"></h1>
+        </div>
+        <div class="view-detail__body" id="detail-body">
+          <!-- Content injected by detail.js -->
+        </div>
       </div>
 
     </main>
 
-    <!-- Bottom navigation — position:fixed per STEP_15, never sticky -->
+    <!-- Bottom navigation -->
     <nav class="nav-bar"
          id="nav-bar"
          role="navigation"
          aria-label="Main navigation">
 
-      <button class="nav-item nav-item--active"
+      <button class="nav-item"
               id="nav-list"
               data-view="list"
               aria-label="List view"
-              aria-pressed="true">
+              aria-pressed="false">
         <svg class="nav-item__icon"
              aria-hidden="true"
              viewBox="0 0 24 24"
@@ -140,11 +156,11 @@
         <span class="nav-item__label">List</span>
       </button>
 
-      <button class="nav-item"
+      <button class="nav-item nav-item--active"
               id="nav-map"
               data-view="map"
               aria-label="Map view"
-              aria-pressed="false">
+              aria-pressed="true">
         <svg class="nav-item__icon"
              aria-hidden="true"
              viewBox="0 0 24 24"
@@ -164,23 +180,14 @@
 
   </div><!-- /.app-shell -->
 
-  <!-- Bottom sheet — outside app-shell for correct z-index stacking -->
-  <div class="bottom-sheet-backdrop"
-       id="sheet-backdrop"
-       aria-hidden="true"></div>
+  <!-- Navigation choice sheet overlay -->
+  <div class="nav-choice-overlay" id="nav-choice-overlay">
+    <div class="nav-choice-sheet" id="nav-choice-sheet"></div>
+  </div>
 
-  <div class="bottom-sheet"
-       id="bottom-sheet"
-       role="dialog"
-       aria-modal="true"
-       aria-label="Restaurant detail"
-       aria-hidden="true">
-    <div class="bottom-sheet__handle">
-      <div class="bottom-sheet__drag-handle" aria-hidden="true"></div>
-    </div>
-    <div class="bottom-sheet__content" id="sheet-content">
-      <!-- Content injected by JS when a card is tapped -->
-    </div>
+  <!-- Sort sheet overlay -->
+  <div class="sort-sheet-overlay" id="sort-sheet-overlay">
+    <div class="sort-sheet" id="sort-sheet"></div>
   </div>
 
   <!-- Toast notifications -->
@@ -190,15 +197,13 @@
        aria-atomic="true"></div>
 
   <!-- Leaflet JS -->
-  <!-- SRI intentionally omitted: Service Worker caches this asset via cache.addAll();
-       opaque cross-origin cached responses fail SRI checks silently, blocking Leaflet load. -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <!-- Supabase JS client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <!-- App -->
-  <script src="app.js" defer></script>
+  <!-- App — ES modules -->
+  <script type="module" src="app.js"></script>
 
   <!-- Service worker registration -->
   <script>
