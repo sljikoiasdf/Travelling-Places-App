@@ -20,7 +20,7 @@ function bindDataDeps(deps) {
   _renderPins = deps.renderPins;
 }
 
-/* ── Personal data ────────────────────────────────────────── */
+/* ── Personal data ──────────────────────────────────────────── */
 
 function getOrCreatePersonalId() {
   let id = localStorage.getItem('personal_id');
@@ -61,11 +61,11 @@ async function upsertPersonalData(restaurantId, updates) {
     );
   } catch (err) {
     console.warn('[personal] upsert failed:', err);
-    showToast('Could not save \u2014 please try again.', 'error');
+    showToast('Could not save — please try again.', 'error');
   }
 }
 
-/* ── Data loading ─────────────────────────────────────────── */
+/* ── Data loading ───────────────────────────────────────────── */
 
 function renderLoadingState() {
   if (dom.skeletonList) {
@@ -101,11 +101,15 @@ async function refreshFromNetwork(fetchLat, fetchLng) {
     const lng = fetchLng ?? (state.locationStatus === 'granted' ? state.userLng : null);
 
     if (lat != null && lng != null) {
+      // Fetch ALL restaurants (no radius cap) so global search works:
+      // someone in Melbourne must still be able to search "Hia" and find
+      // Bangkok results. "Near me" stays as a client-side filter against
+      // _distanceMetres. The RPC still returns results sorted by distance.
       ({ data, error } = await db.rpc('nearby_restaurants', {
         user_lat: lat,
         user_lng: lng,
-        radius_m: CONFIG.fetchRadiusM,
-        limit_n:  200
+        radius_m: 50000000,
+        limit_n:  10000
       }));
 
       state.lastFetchLat = lat;
@@ -134,6 +138,7 @@ async function refreshFromNetwork(fetchLat, fetchLng) {
           cart_identifier, location_notes,
           nearby_landmark_en, landmark_latitude, landmark_longitude,
           legacy_note, source_quote_th, wongnai_rating,
+          description_en, description_th,
           created_at
         `)
         .order('wongnai_rating', { ascending: false, nullsFirst: false })
@@ -179,7 +184,7 @@ async function refreshFromNetwork(fetchLat, fetchLng) {
       }
       if (dom.cardList) dom.cardList.style.display = 'none';
     } else {
-      showToast('Using saved data \u2014 could not refresh.', 'error');
+      showToast('Using saved data — could not refresh.', 'error');
       if (_applyFiltersAndSearch) _applyFiltersAndSearch();
     }
   }
