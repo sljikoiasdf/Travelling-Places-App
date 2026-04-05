@@ -5,7 +5,7 @@
 
 'use strict';
 
-const CACHE_NAME  = 'thailand-food-v11';
+const CACHE_NAME  = 'thailand-food-v12';
 const PHOTO_CACHE = 'thailand-food-photos-v2';
 
 // Static shell assets — pre-cached on install
