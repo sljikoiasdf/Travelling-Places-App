@@ -164,7 +164,7 @@ function initMap() {
 
   // Open/Closed/Unknown legend
   const legendDiv = document.createElement('div');
-  legendDiv.style.cssText = 'background:rgba(14,14,14,0.88);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:10px;padding:8px 14px;margin:0 0 10px 10px;display:flex;gap:14px;align-items:center;font-family:-apple-system,system-ui,sans-serif;font-size:12px;color:#A8957C;pointer-events:none;';
+  legendDiv.style.cssText = 'background:rgba(14,14,14,0.88);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:10px;padding:8px 14px;margin:0 0 calc(60px + env(safe-area-inset-bottom, 0px)) 10px;display:flex;gap:14px;align-items:center;font-family:-apple-system,system-ui,sans-serif;font-size:12px;color:#A8957C;pointer-events:none;';
   const dotBase = 'display:inline-block;width:10px;height:10px;border-radius:50%;border:2px solid #fff;margin-right:5px;';
   legendDiv.innerHTML = '<span style="display:flex;align-items:center;"><span style="' + dotBase + 'background:' + PIN_OPEN + ';"></span>Open</span>'
     + '<span style="display:flex;align-items:center;"><span style="' + dotBase + 'background:' + PIN_CLOSED + ';"></span>Closed</span>'
