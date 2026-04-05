@@ -5,7 +5,7 @@
 
 'use strict';
 
-const CACHE_NAME  = 'thailand-food-v6';
+const CACHE_NAME  = 'thailand-food-v7';
 const PHOTO_CACHE = 'thailand-food-photos-v2';
 
 // Static shell assets — pre-cached on install
@@ -29,8 +29,7 @@ const STATIC_ASSETS = [
   '/router.js',
   '/manifest.json',
   '/icon-180.png',
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+  'https://cdn.apple-mapkit.com/mk/5.x.x/mapkit.core.js',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
 ];
 
@@ -74,7 +73,7 @@ self.addEventListener('fetch', (event) => {
 
   // 1. Static shell — cache-first
   if (url.origin === self.location.origin ||
-      url.host === 'unpkg.com' ||
+      url.host === 'cdn.apple-mapkit.com' ||
       url.host === 'cdn.jsdelivr.net') {
     event.respondWith(cacheFirst(request));
     return;

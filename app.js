@@ -45,7 +45,6 @@ async function init() {
   ]);
 
   if (state.map && state.activeView === 'map') {
-    state.map.invalidateSize();
     renderPins(state.filtered);
   }
 
