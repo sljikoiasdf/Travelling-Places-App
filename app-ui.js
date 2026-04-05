@@ -66,16 +66,39 @@ function resolveNavDestination(restaurant) {
   return null; // no navigable destination
 }
 
-/* ── Location block HTML builder ─────────────────────────── */
-// Spec: docs/design/MISSING_FEATURES.md — MISSING-03
-// Renders cart-finder-box, landmark note, area/city, and directions button
+/* ── Location & contact block ────────────────────────────── */
+// Unified section: location label, area/city, landmark, precision badge,
+// phone, website, cart finder, and dual direction buttons.
+// Design tokens: VISUAL_TOKENS.md. No emojis. Compact layout.
 
 function locationBlockHTML(restaurant) {
   const p    = restaurant.location_precision;
   const dest = resolveNavDestination(restaurant);
-  let html   = '';
+  const urls = navUrls(restaurant);
 
-  // Cart / no-location: show finder box prominently
+  // Section heading with optional precision badge (shown ONCE here, nowhere else)
+  const approxBadge = (dest && dest.isApproximate)
+    ? `<span class="precision-badge">${escapeHTML(dest.label || 'Approximate')}</span>`
+    : '';
+  let html = `<section class="detail-location">
+    <div class="detail-location__header">
+      <span class="detail-location__label">Location</span>
+      ${approxBadge}
+    </div>`;
+
+  // Area + city
+  const areaCity = [
+    restaurant.area ? restaurant.area.replace(/_/g, ' ') : null,
+    restaurant.city ? restaurant.city.replace(/_/g, ' ') : null
+  ].filter(Boolean).join(', ');
+  if (areaCity) html += `<p class="detail-location__area">${escapeHTML(areaCity)}</p>`;
+
+  // Nearby landmark
+  if (restaurant.nearby_landmark_en) {
+    html += `<p class="detail-location__landmark">Near ${escapeHTML(restaurant.nearby_landmark_en)}</p>`;
+  }
+
+  // Cart / no-location finder box
   if (!p || p === 'no_location' || p === 'area_only') {
     if (restaurant.cart_identifier || restaurant.location_notes) {
       html += `<div class="cart-finder-box">
@@ -86,34 +109,38 @@ function locationBlockHTML(restaurant) {
     }
   }
 
-  // Nearby landmark note
-  if (restaurant.nearby_landmark_en) {
-    html += `<p class="landmark-note">Near: ${escapeHTML(restaurant.nearby_landmark_en)}</p>`;
+  // Phone + website — inline within location block, no emojis
+  if (restaurant.phone) {
+    const raw = restaurant.phone.replace(/\s+/g, '');
+    let display = raw;
+    const thaiMatch = raw.replace(/^\+66/, '0').match(/^(0\d{1,2})(\d{3,4})(\d{4})$/);
+    if (thaiMatch) display = `${thaiMatch[1]}-${thaiMatch[2]}-${thaiMatch[3]}`;
+    const auMatch = raw.match(/^(\(?\d{2,3}\)?)(\d{4})(\d{4})$/);
+    if (auMatch) display = `${auMatch[1]} ${auMatch[2]} ${auMatch[3]}`;
+    html += `<a class="detail-location__phone" href="tel:${encodeURI(raw)}">${escapeHTML(display)}</a>`;
   }
 
-  // Area + city
-  const areaCity = [
-    restaurant.area ? restaurant.area.replace(/_/g, ' ') : null,
-    restaurant.city ? restaurant.city.replace(/_/g, ' ') : null
-  ].filter(Boolean).join(', ');
-  if (areaCity) html += `<p class="detail__area">${escapeHTML(areaCity)}</p>`;
-
-  // Directions button — precision-aware
-  if (dest) {
-    const navUrl = `https://maps.google.com/maps?q=${encodeURIComponent(dest.lat)},${encodeURIComponent(dest.lng)}(${encodeURIComponent(restaurant.name_en || restaurant.name_th || 'Restaurant')})`;
-    const approxBadge = dest.isApproximate && dest.label
-      ? `<span class="precision-badge">${escapeHTML(dest.label)}</span>`
-      : '';
-    html += `<div class="detail__directions-area">
-      ${approxBadge}
-      <button class="maps-btn" data-action="directions" data-restaurant-id="${restaurant.id}" aria-label="Get directions to ${escapeHTML(restaurant.name_en || restaurant.name_th || 'restaurant')}">Get Directions</button>
-    </div>`;
-  } else {
-    html += `<div class="detail__directions-area">
-      <button class="maps-btn maps-btn--disabled" data-action="directions" data-restaurant-id="${restaurant.id}" aria-label="Search for ${escapeHTML(restaurant.name_en || restaurant.name_th || 'restaurant')} on Maps">Find on Maps</button>
-    </div>`;
+  if (restaurant.website) {
+    let domain = restaurant.website;
+    try { domain = new URL(restaurant.website).hostname.replace(/^www\./, ''); } catch (_) {}
+    html += `<a class="detail-location__website" href="${escapeHTML(restaurant.website)}" target="_blank" rel="noopener noreferrer">${escapeHTML(domain)}</a>`;
   }
 
+  // Dual direction buttons — Apple Maps + Google Maps side by side, one tap each
+  // SVG logos inline for zero network dependency
+  const appleSvg = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 1.5l6.5 15-6.5-4-6.5 4z" fill="currentColor"/></svg>`;
+  const googleSvg = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 1C5.13 1 2 4.13 2 8c0 4.87 6.13 9.34 6.39 9.53a1 1 0 001.22 0C9.87 17.34 16 12.87 16 8c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 119 5.5a2.5 2.5 0 010 5z" fill="currentColor"/></svg>`;
+
+  html += `<div class="detail-location__directions">
+    <a href="${urls.apple}" class="dir-btn dir-btn--apple" aria-label="Get directions in Apple Maps">
+      ${appleSvg}<span>Apple Maps</span>
+    </a>
+    <a href="${urls.google}" class="dir-btn dir-btn--google" target="_blank" rel="noopener" aria-label="Get directions in Google Maps">
+      ${googleSvg}<span>Google Maps</span>
+    </a>
+  </div>`;
+
+  html += `</section>`;
   return html;
 }
 
@@ -174,12 +201,12 @@ function showNavChoiceSheet(restaurant) {
     ${approxLabel}
     <p class="nav-choice-sheet__title">Open with</p>
     <a href="${urls.apple}" class="nav-choice-btn">
-      <span>🗺</span> Apple Maps
+      Apple Maps
     </a>
     <a href="${urls.google}" class="nav-choice-btn" target="_blank" rel="noopener">
-      <span>📍</span> Google Maps
+      Google Maps
     </a>
-    ${urls.streetView ? `<a href="${urls.streetView}" class="street-view-link" target="_blank" rel="noopener">📷 Street View</a>` : ''}
+    ${urls.streetView ? `<a href="${urls.streetView}" class="street-view-link" target="_blank" rel="noopener">Street View</a>` : ''}
     <button class="nav-choice-cancel" id="nav-choice-cancel">Cancel</button>
   `;
 
@@ -341,31 +368,8 @@ function attachPersonalNotesListener(restaurantId) {
   });
 }
 
-/* ── Contact row HTML builder ────────────────────────────── */
-// Phone + website only. Reviews/Wongnai moved to reviewSectionHTML.
-// Phone uses tel: URI — works offline (native iOS call).
-// Omitted entirely if both phone and website are null.
-
-function contactRowHTML(restaurant) {
-  const items = [];
-
-  if (restaurant.phone) {
-    const raw = restaurant.phone.replace(/\s+/g, '');
-    let display = raw;
-    const thaiMatch = raw.replace(/^\+66/, '0').match(/^(0\d{1,2})(\d{3,4})(\d{4})$/);
-    if (thaiMatch) display = `${thaiMatch[1]}-${thaiMatch[2]}-${thaiMatch[3]}`;
-    items.push(`<a class="contact-link contact-link--phone" href="tel:${encodeURI(raw)}">📞 ${escapeHTML(display)}</a>`);
-  }
-
-  if (restaurant.website) {
-    let domain = restaurant.website;
-    try { domain = new URL(restaurant.website).hostname.replace(/^www\./, ''); } catch (_) {}
-    items.push(`<a class="contact-link" href="${escapeHTML(restaurant.website)}" target="_blank" rel="noopener noreferrer">${escapeHTML(domain)} ↗</a>`);
-  }
-
-  if (items.length === 0) return '';
-  return `<div class="contact-row">${items.join('')}</div>`;
-}
+/* ── Contact row HTML builder (DEPRECATED — content merged into locationBlockHTML) ── */
+function contactRowHTML(_restaurant) { return ''; }
 
 /* ── Reviews section HTML builder ───────────────────────── */
 // Combines all review sources into one "Reviews" section:
@@ -376,19 +380,17 @@ function contactRowHTML(restaurant) {
 // Omitted entirely if no review data exists AND async placeholder not needed.
 
 function reviewSectionHTML(restaurant) {
-  const links = [];
+  const cards = [];
 
   // Wongnai — Thai restaurant review site
   if (restaurant.wongnai_url) {
     const rating = restaurant.wongnai_rating
       ? ` · ${restaurant.wongnai_rating}/5`
       : '';
-    links.push(`<a href="${escapeHTML(restaurant.wongnai_url)}" class="review-link" target="_blank" rel="noopener noreferrer">
-      <span class="review-link__body">
-        <span class="review-link__label">Wongnai reviews${rating}</span>
-        <span class="review-link__excerpt">Thai language restaurant reviews and ratings</span>
-      </span>
-      <span class="review-link__arrow">→</span>
+    cards.push(`<a href="${escapeHTML(restaurant.wongnai_url)}" class="review-card" target="_blank" rel="noopener noreferrer">
+      <span class="review-card__source">Wongnai${rating}</span>
+      <span class="review-card__desc">Thai language reviews and ratings</span>
+      <span class="review-card__arrow" aria-hidden="true">&#8250;</span>
     </a>`);
   }
 
@@ -396,7 +398,7 @@ function reviewSectionHTML(restaurant) {
   if (restaurant.source_url) {
     let sourceName = 'Source listing';
     const url = restaurant.source_url.toLowerCase();
-    if (url.includes('agfg'))         sourceName = 'AGFG';
+    if (url.includes('agfg'))             sourceName = 'AGFG';
     else if (url.includes('broadsheet'))  sourceName = 'Broadsheet';
     else if (url.includes('michelin'))    sourceName = 'Michelin Guide';
     else if (url.includes('timeout'))     sourceName = 'Time Out';
@@ -404,12 +406,10 @@ function reviewSectionHTML(restaurant) {
     else {
       try { sourceName = new URL(restaurant.source_url).hostname.replace(/^www\./, ''); } catch (_) {}
     }
-    links.push(`<a href="${escapeHTML(restaurant.source_url)}" class="review-link" target="_blank" rel="noopener noreferrer">
-      <span class="review-link__body">
-        <span class="review-link__label">${escapeHTML(sourceName)}</span>
-        <span class="review-link__excerpt">Listed on ${escapeHTML(sourceName)}</span>
-      </span>
-      <span class="review-link__arrow">→</span>
+    cards.push(`<a href="${escapeHTML(restaurant.source_url)}" class="review-card" target="_blank" rel="noopener noreferrer">
+      <span class="review-card__source">${escapeHTML(sourceName)}</span>
+      <span class="review-card__desc">Listed on ${escapeHTML(sourceName)}</span>
+      <span class="review-card__arrow" aria-hidden="true">&#8250;</span>
     </a>`);
   }
 
@@ -424,13 +424,13 @@ function reviewSectionHTML(restaurant) {
   const asyncPlaceholder = `<div id="review-links-placeholder"></div>`;
 
   // If nothing at all, still render the placeholder for async content
-  if (links.length === 0 && !restaurant.source_quote_th) {
+  if (cards.length === 0 && !restaurant.source_quote_th) {
     return asyncPlaceholder;
   }
 
   return `<section class="review-links-section">
     <div class="review-links-section__heading">Reviews</div>
-    ${links.join('')}
+    <div class="review-cards">${cards.join('')}</div>
     ${quoteHTML}
     ${asyncPlaceholder}
   </section>`;

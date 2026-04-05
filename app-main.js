@@ -42,36 +42,19 @@ function renderDetailPage(r) {
   const cuisineDisplay = Array.isArray(r.cuisine_types)
     ? r.cuisine_types.map(c => c.replace(/_/g, ' ')).join(', ') : '';
 
-  // Build 2: Distance display in detail view (MISSING-02)
-  const detailPrecision = r.location_precision || 'no_location';
-  let detailDistance = '';
-  if (detailPrecision === 'area_only' && r.area) {
-    detailDistance = `<span class="precision-badge">📍 ${escapeHTML(r.area.replace(/_/g, ' '))}</span>`;
-  } else if (detailPrecision === 'no_location') {
-    detailDistance = `<span class="precision-badge">Find locally</span>`;
-  } else {
-    const fd = formatDistance(r._distanceMetres, detailPrecision);
-    if (fd) {
-      const approxPrefix = detailPrecision === 'approximate' ? '~' : '';
-      detailDistance = `<span class="precision-badge">${approxPrefix}${fd}</span>`;
-    }
-  }
-
   // Page order: Photo → Status → Location & Contact → Reviews → Details → Your stuff → Hours
+  // Precision badge removed from meta row — now shown once in locationBlockHTML
   dom.detailBody.innerHTML = `
     <div class="detail-body__inner">
       ${photosHTML}
 
       <div class="detail-meta-row">
         <span class="open-indicator ${openClass}">${openLabel}</span>
-        ${detailDistance}
         ${r.name_en && r.name_th ? `<p class="card__name-english">${escapeHTML(r.name_en)}</p>` : ''}
         ${r.legacy_note ? `<span class="legacy-note">${escapeHTML(r.legacy_note)}</span>` : ''}
       </div>
 
       ${locationBlockHTML(r)}
-
-      ${contactRowHTML(r)}
 
       ${reviewSectionHTML(r)}
 
@@ -125,7 +108,7 @@ function renderDetailPage(r) {
       placeholder.remove();
       // If the review section wrapper is now empty (no static links either), remove it
       const section = document.querySelector('.review-links-section');
-      if (section && section.querySelectorAll('.review-link, .source-attribution').length === 0) {
+      if (section && section.querySelectorAll('.review-card, .source-attribution').length === 0) {
         section.remove();
       }
     }

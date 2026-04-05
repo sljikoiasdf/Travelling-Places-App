@@ -5,7 +5,7 @@
 const IDB_NAME    = 'thailand-food';
 const IDB_VERSION = 1;
 const IDB_STORE   = 'cache';
-const CACHE_KEY   = 'restaurants_v3';
+const CACHE_KEY   = 'restaurants_v4';
 
 function openIDB() {
   return new Promise((resolve, reject) => {

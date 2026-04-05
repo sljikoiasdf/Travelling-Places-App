@@ -362,19 +362,17 @@ async function reviewLinksHTML(restaurantId) {
 
   let html = '';
 
-  // Render clickable review links
+  // Render clickable review cards
   if (withUrl.length > 0) {
     html += withUrl.map(s => {
       const label = s.sources?.name || 'Review';
       const excerpt = s.excerpt
-        ? `<span class="review-link__excerpt">${escapeHTML(s.excerpt)}</span>`
+        ? `<span class="review-card__desc">${escapeHTML(s.excerpt)}</span>`
         : '';
-      return `<a href="${escapeHTML(s.url)}" class="review-link" target="_blank" rel="noopener noreferrer">
-        <span class="review-link__body">
-          <span class="review-link__label">${escapeHTML(label)}</span>
-          ${excerpt}
-        </span>
-        <span class="review-link__arrow">→</span>
+      return `<a href="${escapeHTML(s.url)}" class="review-card" target="_blank" rel="noopener noreferrer">
+        <span class="review-card__source">${escapeHTML(label)}</span>
+        ${excerpt}
+        <span class="review-card__arrow" aria-hidden="true">&#8250;</span>
       </a>`;
     }).join('');
   }
