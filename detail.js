@@ -1,6 +1,6 @@
 /* ============================================================
    THAILAND FOOD GUIDE — detail.js
-   Restaurant detail page
+   Restaurant detail page (editorial redesign)
    ============================================================ */
 
 'use strict';
@@ -43,148 +43,156 @@ function navUrls(restaurant) {
   return { apple, google, streetView };
 }
 
-/* ── Photo strip ───────────────────────────────────────────── */
+/* ── Format phone number ───────────────────────────────── */
 
-function photoStripHTML(restaurant) {
-  const photos = [];
-  if (restaurant.identification_photo_url) {
-    photos.push({ url: restaurant.identification_photo_url, type: 'identification' });
-  }
-  if (Array.isArray(restaurant.photos)) {
-    const typePriority = { cart: 0, sign: 1, exterior: 2, dish: 3, interior: 4 };
-    const sorted = [...restaurant.photos].sort((a, b) =>
-      (typePriority[a.type] ?? 9) - (typePriority[b.type] ?? 9)
-    );
-    sorted.forEach(p => {
-      if (photos.length < 5 && p.url !== restaurant.identification_photo_url) photos.push(p);
-    });
-  }
-  if (photos.length === 0) {
-    const fallback = (Array.isArray(restaurant.photos) ? restaurant.photos : []);
-    const primary = fallback.find(p => p.is_primary) || fallback[0];
-    if (primary) photos.push(primary);
-  }
-  if (photos.length === 0) return '';
-
-  if (photos.length === 1) {
-    return '<div class="detail-photo"><img src="' + escapeHTML(photos[0].url) + '" alt="' + escapeHTML(restaurant.name_en || restaurant.name_th) + ' photo" loading="eager" decoding="async"></div>';
-  }
-
-  const slides = photos.slice(0, 3).map(p =>
-    '<img src="' + escapeHTML(p.url) + '" alt="" loading="lazy" decoding="async" style="min-width:100%;height:220px;object-fit:cover;scroll-snap-align:start;">'
-  ).join('');
-  return '<div style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;">' + slides + '</div>';
+function formatPhone(raw) {
+  if (!raw) return '';
+  const clean = raw.replace(/\s+/g, '');
+  const thaiMatch = clean.replace(/^\+66/, '0').match(/^(0\d{1,2})(\d{3,4})(\d{4})$/);
+  if (thaiMatch) return thaiMatch[1] + '-' + thaiMatch[2] + '-' + thaiMatch[3];
+  const auMatch = clean.match(/^(\(?0\d\)?)(\d{4})(\d{4})$/);
+  if (auMatch) return auMatch[1] + ' ' + auMatch[2] + ' ' + auMatch[3];
+  return clean;
 }
 
-/* ── Info grid (compact 3x2) ───────────────────────────────── */
+/* ── Editorial status line: Open · closes 21:30 · 330m · ฿฿ ── */
 
-function infoGridHTML(restaurant) {
-  const cellStyle = 'padding:8px 10px;background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:10px;display:flex;flex-direction:column;gap:2px;min-width:0;';
-  const labelStyle = 'font-size:10px;color:#6B5F52;font-weight:500;text-transform:uppercase;letter-spacing:0.03em;';
-  const valueStyle = 'font-size:13px;color:#EAE2D2;font-weight:500;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-  const linkValueStyle = valueStyle + 'color:#C9A84C;text-decoration:none;';
+function statusLineHTML(restaurant) {
+  const parts = [];
 
-  // Price
-  const priceDisplay = restaurant.price_range ? '\u0E3F'.repeat(restaurant.price_range) : '—';
-  const priceCell = '<div style="' + cellStyle + '">'
-    + '<span style="' + labelStyle + '">Price</span>'
-    + '<span style="' + valueStyle + '">' + priceDisplay + '</span>'
-    + '</div>';
-
-  // Hours today (tappable to expand)
-  const todayText = todayHoursText(restaurant.opening_hours) || '—';
-  const hoursCell = '<button type="button" class="detail-hours__today" aria-expanded="false" style="' + cellStyle + 'cursor:pointer;text-align:left;font-family:inherit;">'
-    + '<span style="' + labelStyle + '">Today</span>'
-    + '<span style="' + valueStyle + 'color:#C9A84C;">' + escapeHTML(todayText) + ' \u25BE</span>'
-    + '</button>';
-
-  // Address
-  const addressVal = restaurant.address_en || '—';
-  const addressCell = '<div style="' + cellStyle + '">'
-    + '<span style="' + labelStyle + '">Address</span>'
-    + '<span style="' + valueStyle + '" title="' + escapeHTML(addressVal) + '">' + escapeHTML(addressVal) + '</span>'
-    + '</div>';
-
-  // Phone
-  let phoneCell;
-  if (restaurant.phone) {
-    const raw = restaurant.phone.replace(/\s+/g, '');
-    let display = raw;
-    const thaiMatch = raw.replace(/^\+66/, '0').match(/^(0\d{1,2})(\d{3,4})(\d{4})$/);
-    if (thaiMatch) display = thaiMatch[1] + '-' + thaiMatch[2] + '-' + thaiMatch[3];
-    const auMatch = raw.match(/^(\(?0\d\)?)(\d{4})(\d{4})$/);
-    if (auMatch) display = auMatch[1] + ' ' + auMatch[2] + ' ' + auMatch[3];
-    phoneCell = '<div style="' + cellStyle + '">'
-      + '<span style="' + labelStyle + '">Phone</span>'
-      + '<a href="tel:' + encodeURI(raw) + '" style="' + linkValueStyle + '">' + escapeHTML(display) + '</a>'
-      + '</div>';
-  } else {
-    phoneCell = '<div style="' + cellStyle + '"><span style="' + labelStyle + '">Phone</span><span style="' + valueStyle + '">—</span></div>';
-  }
-
-  // Website
-  let websiteCell;
-  if (restaurant.website) {
-    let displayUrl = restaurant.website;
-    try { displayUrl = new URL(restaurant.website).hostname.replace(/^www\./, ''); } catch {}
-    websiteCell = '<div style="' + cellStyle + '">'
-      + '<span style="' + labelStyle + '">Website</span>'
-      + '<a href="' + escapeHTML(restaurant.website) + '" target="_blank" rel="noopener noreferrer" style="' + linkValueStyle + '">' + escapeHTML(displayUrl) + '</a>'
-      + '</div>';
-  } else {
-    websiteCell = '<div style="' + cellStyle + '"><span style="' + labelStyle + '">Website</span><span style="' + valueStyle + '">—</span></div>';
+  // Open / closed state
+  const openStatus = isOpenNow(restaurant.opening_hours);
+  const todayText = todayHoursText(restaurant.opening_hours);
+  if (openStatus === 'open' || openStatus === 'closes_soon') {
+    // Try to extract closing time from today's hours string
+    let closeText = 'Open';
+    if (todayText && /\d/.test(todayText)) {
+      const match = todayText.match(/[-–—]\s*(\d{1,2}[:.]\d{2})/);
+      if (match) closeText = 'Open · closes ' + match[1].replace('.', ':');
+      else closeText = 'Open · ' + todayText;
+    }
+    parts.push('<span style="color:#7FB685;font-weight:500;">' + escapeHTML(closeText) + '</span>');
+  } else if (openStatus === 'closed') {
+    parts.push('<span style="color:#B8867A;font-weight:500;">Closed</span>');
+  } else if (todayText) {
+    parts.push('<span style="color:#A8957C;">' + escapeHTML(todayText) + '</span>');
   }
 
   // Distance
-  const detailPrecision = restaurant.location_precision || 'no_location';
-  let distText = '—';
-  if (detailPrecision === 'area_only' && restaurant.area) {
-    distText = restaurant.area.replace(/_/g, ' ');
-  } else if (detailPrecision !== 'no_location') {
-    const fd = formatDistance(restaurant._distanceMetres, detailPrecision);
-    if (fd) distText = (detailPrecision === 'approximate' ? '~' : '') + fd;
+  const p = restaurant.location_precision || 'no_location';
+  if (p === 'area_only' && restaurant.area) {
+    parts.push('<span style="color:#A8957C;">' + escapeHTML(restaurant.area.replace(/_/g, ' ')) + '</span>');
+  } else if (p !== 'no_location') {
+    const fd = formatDistance(restaurant._distanceMetres, p);
+    if (fd) parts.push('<span style="color:#A8957C;">' + (p === 'approximate' ? '~' : '') + escapeHTML(fd) + '</span>');
   }
-  const distCell = '<div style="' + cellStyle + '">'
-    + '<span style="' + labelStyle + '">Distance</span>'
-    + '<span style="' + valueStyle + '">' + escapeHTML(distText) + '</span>'
+
+  // Price
+  if (restaurant.price_range) {
+    parts.push('<span style="color:#C9A84C;font-weight:500;">' + '\u0E3F'.repeat(restaurant.price_range) + '</span>');
+  }
+
+  if (parts.length === 0) return '';
+  return '<div style="padding:0 16px;font-size:14px;line-height:1.4;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">'
+    + parts.join('<span style="color:#3A342B;">·</span>')
     + '</div>';
-
-  // Full hours (hidden, shown when Today cell tapped)
-  const dayNames  = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
-  const fullHoursHTML = restaurant.opening_hours
-    ? Object.entries(dayNames).map(([key, label]) =>
-        '<div class="detail-hours__row"><span class="detail-hours__day">' + label + '</span><span class="detail-hours__time">' + formatDayHours(restaurant.opening_hours[key]) + '</span></div>'
-      ).join('')
-    : '';
-
-  return '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:0 16px;">'
-    + priceCell + hoursCell + addressCell
-    + phoneCell + websiteCell + distCell
-    + '</div>'
-    + '<div class="detail-hours__full" hidden style="padding:6px 16px 0;">' + fullHoursHTML + '</div>';
 }
 
-/* ── Location block (cart finder box, landmark notes) ────── */
+/* ── Area · cuisine meta line ──────────────────────────── */
 
-function locationBlockHTML(restaurant) {
-  const p = restaurant.location_precision;
-  let html = '';
+function metaLineHTML(restaurant) {
+  const bits = [];
+  if (restaurant.area) bits.push(escapeHTML(restaurant.area.replace(/_/g, ' ')));
+  else if (restaurant.city) bits.push(escapeHTML(cityLabel(restaurant.city)));
+  if (restaurant.cuisine_type) bits.push(escapeHTML(restaurant.cuisine_type.replace(/_/g, ' ')));
+  if (bits.length === 0) return '';
+  return '<div style="padding:0 16px;font-size:13px;color:#6B5F52;text-transform:uppercase;letter-spacing:0.08em;font-weight:500;">'
+    + bits.join(' <span style="color:#3A342B;">·</span> ')
+    + '</div>';
+}
 
-  if (!p || p === 'no_location' || p === 'area_only') {
-    if (restaurant.cart_identifier || restaurant.location_notes) {
-      html += '<div style="margin:12px 16px;padding:14px 16px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.2);border-radius:12px;">'
-        + '<div style="font-size:12px;font-weight:600;color:#C9A84C;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">How to find it</div>'
-        + (restaurant.cart_identifier ? '<div style="font-size:15px;color:#EAE2D2;line-height:1.5;">' + escapeHTML(restaurant.cart_identifier) + '</div>' : '')
-        + (restaurant.location_notes ? '<div style="font-size:14px;color:#A8957C;line-height:1.4;margin-top:4px;">' + escapeHTML(restaurant.location_notes) + '</div>' : '')
-        + '</div>';
+/* ── Big Directions CTA button ─────────────────────────── */
+
+function directionsCTAHTML(restaurant) {
+  const dest = resolveNavDestination(restaurant);
+  const approxNote = dest?.isApproximate
+    ? '<p style="font-size:11px;color:#6B5F52;font-style:italic;margin:6px 0 0;text-align:center;">' + escapeHTML(dest.label || 'Location approximate') + '</p>'
+    : '';
+  return '<div style="padding:0 16px;">'
+    + '<button type="button" id="detail-directions-btn" data-action="directions" data-id="' + restaurant.id + '" '
+    + 'style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:52px;padding:14px 18px;'
+    + 'background:#C9A84C;color:#0E0E0E;border:none;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;'
+    + 'font-family:inherit;-webkit-tap-highlight-color:transparent;">'
+    + '<span style="font-size:18px;">\u27A4</span> Directions'
+    + '</button>'
+    + approxNote
+    + '</div>';
+}
+
+/* ── Accordion block ─────────────────────────────────────── */
+
+function accordionHTML(id, label, bodyHTML) {
+  if (!bodyHTML) return '';
+  return '<details class="detail-accordion" style="padding:0 16px;border-top:1px solid rgba(255,255,255,0.06);margin-top:0;">'
+    + '<summary style="display:flex;justify-content:space-between;align-items:center;padding:14px 0;cursor:pointer;list-style:none;-webkit-tap-highlight-color:transparent;">'
+    + '<span style="font-size:13px;font-weight:600;color:#A8957C;text-transform:uppercase;letter-spacing:0.05em;">' + escapeHTML(label) + '</span>'
+    + '<span class="detail-accordion__chevron" style="color:#6B5F52;font-size:14px;transition:transform 0.2s;">\u25BE</span>'
+    + '</summary>'
+    + '<div style="padding:0 0 14px;">' + bodyHTML + '</div>'
+    + '</details>';
+}
+
+function hoursBodyHTML(restaurant) {
+  if (!restaurant.opening_hours) return '';
+  const days = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
+  const rows = Object.entries(days).map(([k, label]) =>
+    '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:14px;">'
+    + '<span style="color:#A8957C;">' + label + '</span>'
+    + '<span style="color:#EAE2D2;">' + escapeHTML(formatDayHours(restaurant.opening_hours[k])) + '</span>'
+    + '</div>'
+  ).join('');
+  return rows;
+}
+
+function contactBodyHTML(restaurant) {
+  const rows = [];
+  if (restaurant.phone) {
+    const raw = restaurant.phone.replace(/\s+/g, '');
+    rows.push('<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:14px;">'
+      + '<span style="color:#A8957C;">Phone</span>'
+      + '<a href="tel:' + encodeURI(raw) + '" style="color:#C9A84C;text-decoration:none;">' + escapeHTML(formatPhone(restaurant.phone)) + '</a>'
+      + '</div>');
+  }
+  if (restaurant.website) {
+    let displayUrl = restaurant.website;
+    try { displayUrl = new URL(restaurant.website).hostname.replace(/^www\./, ''); } catch {}
+    rows.push('<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:14px;gap:12px;">'
+      + '<span style="color:#A8957C;flex-shrink:0;">Website</span>'
+      + '<a href="' + escapeHTML(restaurant.website) + '" target="_blank" rel="noopener noreferrer" style="color:#C9A84C;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHTML(displayUrl) + '</a>'
+      + '</div>');
+  }
+  return rows.join('');
+}
+
+function addressBodyHTML(restaurant) {
+  const bits = [];
+  if (restaurant.address_en) {
+    bits.push('<p style="font-size:14px;color:#EAE2D2;line-height:1.5;margin:0 0 8px;">' + escapeHTML(restaurant.address_en) + '</p>');
+  }
+  if (restaurant.nearby_landmark_en) {
+    bits.push('<p style="font-size:13px;color:#A8957C;line-height:1.4;margin:0;">Near: ' + escapeHTML(restaurant.nearby_landmark_en) + '</p>');
+  }
+  if (restaurant.cart_identifier || restaurant.location_notes) {
+    const p = restaurant.location_precision;
+    if (!p || p === 'no_location' || p === 'area_only') {
+      bits.push('<div style="margin-top:10px;padding:12px 14px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.2);border-radius:10px;">'
+        + '<div style="font-size:11px;font-weight:600;color:#C9A84C;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">How to find it</div>'
+        + (restaurant.cart_identifier ? '<div style="font-size:14px;color:#EAE2D2;line-height:1.4;">' + escapeHTML(restaurant.cart_identifier) + '</div>' : '')
+        + (restaurant.location_notes ? '<div style="font-size:13px;color:#A8957C;line-height:1.4;margin-top:4px;">' + escapeHTML(restaurant.location_notes) + '</div>' : '')
+        + '</div>');
     }
   }
-
-  if (restaurant.nearby_landmark_en) {
-    html += '<p style="padding:0 16px;font-size:14px;color:#A8957C;">Near: ' + escapeHTML(restaurant.nearby_landmark_en) + '</p>';
-  }
-
-  return html;
+  return bits.join('');
 }
 
 /* ── Dishes detail ──────────────────────────────────────────── */
@@ -257,35 +265,23 @@ function sourceAttributionHTML(restaurant) {
 /* ── Extract clean source name from URL ────────────────────── */
 
 function extractSourceName(url, fallbackName) {
-  // Use the source name if it's meaningful (not a generic catch-all)
   if (fallbackName && fallbackName !== 'Other Editorial' && fallbackName !== 'other_editorial' && fallbackName !== 'Other') {
     return fallbackName;
   }
-  // Extract a readable name from the URL domain
   try {
     const hostname = new URL(url).hostname.replace(/^www\./, '');
-    // Remove TLD suffixes to get the brand name
     const cleaned = hostname
-      .replace(/\.com\.au$/, '')
-      .replace(/\.co\.th$/, '')
-      .replace(/\.co\.uk$/, '')
-      .replace(/\.com$/, '')
-      .replace(/\.org$/, '')
-      .replace(/\.net$/, '')
-      .replace(/\.io$/, '')
-      .replace(/\.au$/, '')
-      .replace(/\.th$/, '');
-    // Capitalize first letter
-    if (cleaned) {
-      return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-    }
+      .replace(/\.com\.au$/, '').replace(/\.co\.th$/, '').replace(/\.co\.uk$/, '')
+      .replace(/\.com$/, '').replace(/\.org$/, '').replace(/\.net$/, '')
+      .replace(/\.io$/, '').replace(/\.au$/, '').replace(/\.th$/, '');
+    if (cleaned) return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
     return hostname;
   } catch {
     return fallbackName || 'Review';
   }
 }
 
-/* ── Review links (block layout, 2-3 across, compact) ──────── */
+/* ── Review chips (2-col compact) ──────────────────────────── */
 
 async function reviewLinksHTML(restaurantId, restaurantName) {
   const { data: sources, error } = await db
@@ -298,40 +294,17 @@ async function reviewLinksHTML(restaurantId, restaurantName) {
 
   if (error || !sources || sources.length === 0) return '';
 
-  const safeName = escapeHTML(restaurantName || 'this restaurant');
-  const btnStyle = 'display:flex;align-items:center;justify-content:center;gap:6px;flex:1;min-width:calc(50% - 4px);padding:8px 10px;background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:10px;font-size:13px;font-weight:500;color:#EAE2D2;text-decoration:none;text-align:center;-webkit-tap-highlight-color:transparent;';
+  const chipStyle = 'display:flex;align-items:center;justify-content:center;gap:4px;padding:8px 10px;background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:10px;font-size:12px;font-weight:500;color:#EAE2D2;text-decoration:none;text-align:center;-webkit-tap-highlight-color:transparent;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
 
   const blocks = sources.map(s => {
     const label = extractSourceName(s.url, s.sources?.name);
     const rating = s.rating_score ? ' \u2605' + s.rating_score : '';
-    return '<a href="' + escapeHTML(s.url) + '" style="' + btnStyle + '" target="_blank" rel="noopener noreferrer">' + escapeHTML(label) + rating + '</a>';
+    return '<a href="' + escapeHTML(s.url) + '" style="' + chipStyle + '" target="_blank" rel="noopener noreferrer">' + escapeHTML(label) + rating + '</a>';
   }).join('');
 
   return '<div style="padding:0 16px;">'
-    + '<h3 style="font-size:13px;font-weight:600;color:#A8957C;margin-bottom:6px;">Read Reviews on ' + safeName + '</h3>'
-    + '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + blocks + '</div>'
-    + '</div>';
-}
-
-/* ── Directions buttons (Apple Maps + Google Maps + Street View, single row) ── */
-
-function directionsButtonsHTML(restaurant) {
-  const urls = navUrls(restaurant);
-  const dest = resolveNavDestination(restaurant);
-  const approxNote = dest?.isApproximate
-    ? '<p style="font-size:12px;color:#6B5F52;font-style:italic;margin-bottom:6px;text-align:center;">' + escapeHTML(dest.label || 'Location approximate') + '</p>'
-    : '';
-  const btnBase = 'display:flex;align-items:center;justify-content:center;gap:4px;flex:1;padding:10px 6px;min-height:44px;border-radius:10px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;';
-  const appleBtnStyle = btnBase + 'background:#C9A84C;color:#0E0E0E;';
-  const secondaryBtnStyle = btnBase + 'background:#222222;color:#EAE2D2;border:1px solid rgba(255,255,255,0.07);';
-
-  return '<div style="padding:0 16px;">'
-    + approxNote
-    + '<div style="display:flex;gap:6px;">'
-    + '<a href="' + urls.apple + '" style="' + appleBtnStyle + '">\uD83D\uDDFA Apple</a>'
-    + '<a href="' + urls.google + '" style="' + secondaryBtnStyle + '" target="_blank" rel="noopener">\uD83D\uDCCD Google</a>'
-    + (urls.streetView ? '<a href="' + urls.streetView + '" style="' + secondaryBtnStyle + '" target="_blank" rel="noopener">\uD83D\uDCF7 Street</a>' : '')
-    + '</div>'
+    + '<h3 style="font-size:11px;font-weight:600;color:#6B5F52;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 8px;">Reviews</h3>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">' + blocks + '</div>'
     + '</div>';
 }
 
@@ -398,9 +371,6 @@ function renderDetailPage(r) {
   const personal   = state.personalData.get(r.id) || {};
   const openStatus = isOpenNow(r.opening_hours);
 
-  // Photo strip
-  const photoHTML = photoStripHTML(r);
-
   // Open/closed dot
   const dotClass = (openStatus === 'open' || openStatus === 'closes_soon') ? 'card-dot--open'
                  : openStatus === 'closed' ? 'card-dot--closed'
@@ -410,48 +380,67 @@ function renderDetailPage(r) {
   const displayName = r.name_en || r.name_th || '';
   const subName = (r.name_th && r.name_en && r.name_th !== r.name_en) ? r.name_th : '';
 
-  // Michelin
-  const michelinHTML = r.michelin_stars > 0
-    ? '<span class="detail__michelin">' + '\u2605'.repeat(r.michelin_stars) + ' Michelin Star' + (r.michelin_stars > 1 ? 's' : '') + '</span>'
-    : r.michelin_bib ? '<span class="detail__michelin">Bib Gourmand</span>' : '';
-
   // Wishlist heart
   const wishHTML = personal.is_wishlisted
     ? '<button class="detail__heart detail__heart--active" data-action="wishlist" data-id="' + r.id + '" aria-label="Remove from wishlist" aria-pressed="true">\u2665</button>'
     : '<button class="detail__heart" data-action="wishlist" data-id="' + r.id + '" aria-label="Add to wishlist" aria-pressed="false">\u2661</button>';
 
+  // Michelin
+  const michelinHTML = r.michelin_stars > 0
+    ? '<div style="padding:0 16px;"><span class="detail__michelin">' + '\u2605'.repeat(r.michelin_stars) + ' Michelin Star' + (r.michelin_stars > 1 ? 's' : '') + '</span></div>'
+    : r.michelin_bib ? '<div style="padding:0 16px;"><span class="detail__michelin">Bib Gourmand</span></div>' : '';
+
   // Tagline
   const taglineHTML = r.tagline
-    ? '<p style="padding:0 16px;font-size:17px;color:#A8957C;font-style:italic;line-height:1.5;">' + escapeHTML(r.tagline) + '</p>'
+    ? '<p style="padding:0 16px;font-size:15px;color:#A8957C;font-style:italic;line-height:1.5;margin:0;">' + escapeHTML(r.tagline) + '</p>'
     : '';
 
-  // Description
+  // Description (150-word editorial body)
   const descriptionHTML = r.description_en
-    ? '<p style="padding:0 16px;font-size:16px;color:#EAE2D2;line-height:1.6;">' + escapeHTML(r.description_en) + '</p>'
+    ? '<p style="padding:0 16px;font-size:16px;color:#EAE2D2;line-height:1.6;margin:0;">' + escapeHTML(r.description_en) + '</p>'
     : '';
 
-  dom.detailBody.innerHTML = '<div class="detail-body__inner">'
-    + photoHTML
-    + '<div class="detail-header">'
-    + '<div class="detail-header__name-row">'
-    + '<span class="card-dot ' + dotClass + '"></span>'
-    + '<h2 class="detail-header__name">' + escapeHTML(displayName) + '</h2>'
+  // Editorial header
+  const editorialHeaderHTML = '<div style="padding:18px 16px 0;">'
+    + '<div style="display:flex;align-items:flex-start;gap:10px;">'
+    + '<span class="card-dot ' + dotClass + '" style="margin-top:10px;flex-shrink:0;"></span>'
+    + '<h2 style="flex:1;font-size:26px;font-weight:700;color:#EAE2D2;line-height:1.2;margin:0;letter-spacing:-0.01em;">' + escapeHTML(displayName) + '</h2>'
     + wishHTML
     + '</div>'
-    + (subName ? '<span class="detail-header__subname">' + escapeHTML(subName) + '</span>' : '')
-    + (r.legacy_note ? '<span class="detail-header__legacy">' + escapeHTML(r.legacy_note) + '</span>' : '')
+    + (subName ? '<div style="padding-left:18px;font-size:14px;color:#6B5F52;font-style:italic;margin-top:2px;">' + escapeHTML(subName) + '</div>' : '')
+    + (r.legacy_note ? '<div style="padding-left:18px;font-size:12px;color:#6B5F52;margin-top:2px;">' + escapeHTML(r.legacy_note) + '</div>' : '')
+    + '</div>';
+
+  dom.detailBody.innerHTML = '<div class="detail-body__inner" style="padding-bottom:24px;">'
+    // Editorial header
+    + editorialHeaderHTML
+    // Meta: area · cuisine
+    + '<div style="margin-top:6px;">' + metaLineHTML(r) + '</div>'
+    // Status line: open · closes · distance · price
+    + '<div style="margin-top:6px;">' + statusLineHTML(r) + '</div>'
+    // Primary CTA
+    + '<div style="margin-top:14px;">' + directionsCTAHTML(r) + '</div>'
+    // Description (150-word editorial body)
+    + (descriptionHTML ? '<div style="margin-top:18px;">' + descriptionHTML + '</div>' : '')
+    // Tagline (if present)
+    + (taglineHTML ? '<div style="margin-top:10px;">' + taglineHTML + '</div>' : '')
+    // Review chips
+    + '<div id="review-links-placeholder" style="margin-top:18px;"></div>'
+    // Michelin / dietary / ratings
+    + (michelinHTML ? '<div style="margin-top:14px;">' + michelinHTML + '</div>' : '')
+    + (dietaryBadgesHTML(r) ? '<div style="margin-top:10px;">' + dietaryBadgesHTML(r) + '</div>' : '')
+    + (ratingsHTML(r) ? '<div style="margin-top:10px;">' + ratingsHTML(r) + '</div>' : '')
+    // Specialities
+    + (specialitiesHTML(r.specialities) ? '<div style="margin-top:14px;">' + specialitiesHTML(r.specialities) + '</div>' : '')
+    // Dishes detail
+    + (dishesDetailHTML(r.dishes) ? '<div style="margin-top:14px;">' + dishesDetailHTML(r.dishes) + '</div>' : '')
+    // Accordions
+    + '<div style="margin-top:18px;">'
+    + accordionHTML('hours', 'Hours', hoursBodyHTML(r))
+    + accordionHTML('contact', 'Contact', contactBodyHTML(r))
+    + accordionHTML('address', 'Address', addressBodyHTML(r))
     + '</div>'
-    + infoGridHTML(r)
-    + directionsButtonsHTML(r)
-    + michelinHTML
-    + taglineHTML
-    + locationBlockHTML(r)
-    + ratingsHTML(r)
-    + dietaryBadgesHTML(r)
-    + '<div id="review-links-placeholder"></div>'
-    + descriptionHTML
-    + dishesDetailHTML(r.dishes)
-    + specialitiesHTML(r.specialities)
+    // Source attribution
     + sourceAttributionHTML(r)
     + '</div>';
 
@@ -460,18 +449,13 @@ function renderDetailPage(r) {
   dom.viewDetail.removeAttribute('aria-hidden');
   dom.detailBody.scrollTop = 0;
 
-  // Expandable hours (Today cell in info grid toggles full hours)
-  const todayBtn = dom.detailBody.querySelector('.detail-hours__today');
-  const fullHours = dom.detailBody.querySelector('.detail-hours__full');
-  if (todayBtn && fullHours) {
-    todayBtn.addEventListener('click', () => {
-      const expanded = todayBtn.getAttribute('aria-expanded') === 'true';
-      todayBtn.setAttribute('aria-expanded', String(!expanded));
-      fullHours.hidden = expanded;
-    });
+  // Wire up Directions button → existing nav choice sheet
+  const dirBtn = document.getElementById('detail-directions-btn');
+  if (dirBtn) {
+    dirBtn.addEventListener('click', () => showNavChoiceSheet(r));
   }
 
-  // Async: review links (block layout)
+  // Async: review chips
   reviewLinksHTML(r.id, r.name_en || r.name_th || '').then(html => {
     const placeholder = document.getElementById('review-links-placeholder');
     if (placeholder && html) {
