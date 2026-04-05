@@ -141,6 +141,9 @@ function attachEventListeners() {
   // Nav buttons
   dom.navMap.addEventListener('click',  () => { window.location.hash = '#map'; });
   dom.navList.addEventListener('click', () => { window.location.hash = '#list'; });
+  if (dom.navSearch) {
+    dom.navSearch.addEventListener('click', () => { window.location.hash = '#search'; });
+  }
 
   // Detail back button
   dom.detailBack.addEventListener('click', () => history.back());

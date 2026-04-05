@@ -14,6 +14,7 @@ const state = {
   pendingRoute:   null,
   map:            null,
   mapPins:        new Map(),
+  mapBounds:      null,
   personalData:   new Map(),
   personalId:     null,
   isLoading:      false,
@@ -49,6 +50,7 @@ function initDom() {
   dom.emptyState        = document.getElementById('empty-state');
   dom.navList           = document.getElementById('nav-list');
   dom.navMap            = document.getElementById('nav-map');
+  dom.navSearch         = document.getElementById('nav-search');
   dom.navBar            = document.getElementById('nav-bar');
   dom.toastContainer    = document.getElementById('toast-container');
   dom.mapContainer      = document.getElementById('map');

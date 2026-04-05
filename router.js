@@ -8,6 +8,7 @@
 import { state, dom } from './state.js';
 import { initMap, renderPins } from './map.js';
 import { openDetail, renderDetailPage, hideDetailPage } from './detail.js';
+import { applyFiltersAndSearch } from './filters.js';
 
 /* ── Router ─────────────────────────────────────────────────── */
 
@@ -32,6 +33,9 @@ function handleRoute(hash) {
     } else {
       window.location.replace('#map');
     }
+  } else if (hash === '#search') {
+    hideDetailPage();
+    applyView('search');
   } else if (hash === '#list') {
     hideDetailPage();
     applyView('list');
@@ -44,27 +48,40 @@ function handleRoute(hash) {
 /* ── View management ────────────────────────────────────────── */
 
 function applyView(view) {
-  state.activeView = view;
-  const isList = view === 'list';
+  const showList = view === 'list' || view === 'search';
+  state.activeView = showList ? 'list' : 'map';
 
-  dom.viewList.classList.toggle('view--active', isList);
-  dom.viewList.setAttribute('aria-hidden', String(!isList));
-  dom.viewMap.classList.toggle('view--active', !isList);
-  dom.viewMap.setAttribute('aria-hidden', String(isList));
+  dom.viewList.classList.toggle('view--active', showList);
+  dom.viewList.setAttribute('aria-hidden', String(!showList));
+  dom.viewMap.classList.toggle('view--active', !showList);
+  dom.viewMap.setAttribute('aria-hidden', String(showList));
 
-  dom.navList.setAttribute('aria-pressed', String(isList));
-  dom.navList.classList.toggle('nav-item--active', isList);
-  dom.navMap.setAttribute('aria-pressed', String(!isList));
-  dom.navMap.classList.toggle('nav-item--active', !isList);
+  // Nav highlighting — 3 tabs
+  dom.navMap.classList.toggle('nav-item--active', view === 'map');
+  dom.navMap.setAttribute('aria-pressed', String(view === 'map'));
+  dom.navList.classList.toggle('nav-item--active', view === 'list');
+  dom.navList.setAttribute('aria-pressed', String(view === 'list'));
+  if (dom.navSearch) {
+    dom.navSearch.classList.toggle('nav-item--active', view === 'search');
+    dom.navSearch.setAttribute('aria-pressed', String(view === 'search'));
+  }
 
-  if (!isList) {
+  if (showList) {
+    // Re-filter list with current map viewport bounds
+    applyFiltersAndSearch();
+  } else {
     initMap();
     setTimeout(() => {
       if (state.map) {
-        state.map.invalidateSize();
+        google.maps.event.trigger(state.map, 'resize');
         renderPins(state.filtered);
       }
     }, 50);
+  }
+
+  // Focus search input when search tab selected
+  if (view === 'search' && dom.searchInput) {
+    setTimeout(() => dom.searchInput.focus(), 100);
   }
 }
 

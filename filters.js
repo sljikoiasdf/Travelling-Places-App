@@ -26,7 +26,7 @@ function buildFilterChips() {
 
   const gpsGranted = state.locationStatus === 'granted';
   const nearMeActive = state.activeFilters.near_me === true;
-  chips.push(`<button class="filter-chip${nearMeActive ? ' filter-chip--active' : ''}${!gpsGranted ? ' filter-chip--disabled' : ''}" data-filter-dim="near_me" data-filter-val="true" aria-pressed="${nearMeActive}" ${!gpsGranted ? 'aria-disabled="true"' : ''}>📍 Near me</button>`);
+  chips.push(`<button class="filter-chip${nearMeActive ? ' filter-chip--active' : ''}${!gpsGranted ? ' filter-chip--disabled' : ''}" data-filter-dim="near_me" data-filter-val="true" aria-pressed="${nearMeActive}" ${!gpsGranted ? 'aria-disabled="true"' : ''}>\uD83D\uDCCD Near me</button>`);
 
   const openNowActive = state.activeFilters.open_now === true;
   chips.push(`<button class="filter-chip${openNowActive ? ' filter-chip--active' : ''}" data-filter-dim="open_now" data-filter-val="true" aria-pressed="${openNowActive}">Open now</button>`);
@@ -48,7 +48,7 @@ function buildFilterChips() {
   const prices = [...new Set(state.restaurants.map(r => r.price_range).filter(Boolean))].sort();
   prices.forEach(price => {
     const isActive = state.activeFilters.price_range === price;
-    chips.push(`<button class="filter-chip${isActive ? ' filter-chip--active' : ''}" data-filter-dim="price_range" data-filter-val="${price}" aria-pressed="${isActive}">${'฿'.repeat(price)}</button>`);
+    chips.push(`<button class="filter-chip${isActive ? ' filter-chip--active' : ''}" data-filter-dim="price_range" data-filter-val="${price}" aria-pressed="${isActive}">${'\u0E3F'.repeat(price)}</button>`);
   });
 
   if (state.restaurants.some(r => r.is_halal)) {
@@ -61,10 +61,10 @@ function buildFilterChips() {
   }
 
   const periods = [
-    { key: 'breakfast',  label: '🌅 Breakfast' },
-    { key: 'lunch',      label: '☀️ Lunch' },
-    { key: 'dinner',     label: '🌙 Dinner' },
-    { key: 'late_night', label: '🌃 Late Night' },
+    { key: 'breakfast',  label: '\uD83C\uDF05 Breakfast' },
+    { key: 'lunch',      label: '\u2600\uFE0F Lunch' },
+    { key: 'dinner',     label: '\uD83C\uDF19 Dinner' },
+    { key: 'late_night', label: '\uD83C\uDF03 Late Night' },
   ];
   periods.forEach(({ key, label }) => {
     const isActive = state.activeFilters.meal_period === key;
@@ -153,8 +153,18 @@ function applyFiltersAndSearch() {
   results = sortRestaurants(results, state.sortOrder);
   state.filtered = results;
 
+  // For list rendering, apply map viewport bounds if available
+  let listResults = results;
+  if (state.mapBounds) {
+    const { north, south, east, west } = state.mapBounds;
+    listResults = results.filter(r => {
+      if (!r.lat || !r.lng) return false;
+      return r.lat >= south && r.lat <= north && r.lng >= west && r.lng <= east;
+    });
+  }
+
   // Render
-  renderList(state.filtered);
+  renderList(listResults);
   buildFilterChips();
   if (state.activeView === 'map' && _renderPins) _renderPins(state.filtered);
   renderLocationNotice();
