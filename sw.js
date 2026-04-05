@@ -5,7 +5,7 @@
 
 'use strict';
 
-const CACHE_NAME  = 'thailand-food-v7';
+const CACHE_NAME  = 'thailand-food-v8';
 const PHOTO_CACHE = 'thailand-food-photos-v2';
 
 // Static shell assets — pre-cached on install
@@ -29,7 +29,6 @@ const STATIC_ASSETS = [
   '/router.js',
   '/manifest.json',
   '/icon-180.png',
-  'https://cdn.apple-mapkit.com/mk/5.x.x/mapkit.core.js',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
 ];
 
@@ -71,27 +70,32 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url         = new URL(request.url);
 
-  // 1. Static shell — cache-first
+  // 1. Google Maps — always network (tiles, API scripts)
+  if (url.host.includes('googleapis.com') || url.host.includes('gstatic.com') || url.host.includes('google.com')) {
+    event.respondWith(networkOnly(request));
+    return;
+  }
+
+  // 2. Static shell — cache-first
   if (url.origin === self.location.origin ||
-      url.host === 'cdn.apple-mapkit.com' ||
       url.host === 'cdn.jsdelivr.net') {
     event.respondWith(cacheFirst(request));
     return;
   }
 
-  // 2. Supabase Storage (photos) — network-only
+  // 3. Supabase Storage (photos) — network-only
   if (url.host === SUPABASE_HOST && url.pathname.startsWith(SUPABASE_STORAGE)) {
     event.respondWith(networkOnly(request));
     return;
   }
 
-  // 3. Supabase REST API (data) — network-first
+  // 4. Supabase REST API (data) — network-first
   if (url.host === SUPABASE_HOST && url.pathname.startsWith(SUPABASE_REST)) {
     event.respondWith(networkFirst(request, CACHE_NAME));
     return;
   }
 
-  // 4. Default — network-first
+  // 5. Default — network-first
   event.respondWith(networkFirst(request, CACHE_NAME));
 });
 

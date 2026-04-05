@@ -11,17 +11,15 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const { createClient } = supabase;
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const MAPKIT_TOKEN = 'REPLACE_WITH_YOUR_MAPKIT_JS_JWT_TOKEN';
-
 const CONFIG = {
   mapFallbackLat:  0,
   mapFallbackLng:  0,
   mapFallbackZoom: 2,
   mapPinZoom:     15,
   mapGPSZoom:     16,
-  mapCityZoom:    15,
-  zoomClose:      0.02,
-  zoomMid:        0.2,
+  mapCityZoom:    14,
+  zoomClose:      15,
+  zoomMid:        12,
   fetchRadiusM:   50000,
   reFetchDistM:   20000,
   cacheVersion:   'v1',
@@ -40,4 +38,4 @@ const CITY_CENTRES = {
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
-export { db, CONFIG, CITY_CENTRES, DAY_KEYS, MAPKIT_TOKEN };
+export { db, CONFIG, CITY_CENTRES, DAY_KEYS };
