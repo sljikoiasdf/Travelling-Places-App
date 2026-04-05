@@ -1,0 +1,392 @@
+/* THAILAND FOOD GUIDE — styles-extra.css */
+/* Missing component styles for overlays, detail view sections, etc. */
+
+/* === NAV CHOICE OVERLAY (directions app picker) === */
+
+.nav-choice-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--color-bg-overlay);
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-base);
+}
+.nav-choice-overlay--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.nav-choice-sheet {
+  width: 100%;
+  max-width: 400px;
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: var(--space-5) var(--space-4) calc(var(--space-5) + var(--space-safe-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  transform: translateY(100%);
+  transition: transform var(--transition-slow);
+}
+.nav-choice-overlay--visible .nav-choice-sheet {
+  transform: translateY(0);
+}
+
+.nav-choice-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  min-height: 52px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  transition: background var(--transition-fast);
+}
+.nav-choice-btn:active {
+  background: var(--color-interactive-pressed);
+}
+
+.nav-choice-cancel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: var(--space-3);
+  min-height: 48px;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  margin-top: var(--space-2);
+}
+
+/* === SORT SHEET OVERLAY === */
+
+.sort-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--color-bg-overlay);
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-base);
+}
+.sort-sheet-overlay--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sort-sheet {
+  width: 100%;
+  max-width: 400px;
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: var(--space-5) var(--space-4) calc(var(--space-5) + var(--space-safe-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  transform: translateY(100%);
+  transition: transform var(--transition-slow);
+}
+.sort-sheet-overlay--visible .sort-sheet {
+  transform: translateY(0);
+}
+
+.sort-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  min-height: 48px;
+  color: var(--color-text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.sort-option:last-child { border-bottom: none; }
+.sort-option:active { background: var(--color-interactive-pressed); }
+
+.sort-option--active {
+  color: var(--color-accent-gold);
+}
+
+.sort-option--disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.sort-option__check {
+  color: var(--color-accent-gold);
+  font-weight: var(--weight-bold);
+}
+
+/* === REVIEW CARDS (detail view) === */
+
+.review-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  color: inherit;
+  transition: background var(--transition-fast);
+}
+.review-card:active { background: var(--color-interactive-pressed); }
+
+.review-card__source {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+  flex-shrink: 0;
+}
+
+.review-card__desc {
+  flex: 1;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.review-card__arrow {
+  font-size: var(--text-lg);
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+
+/* === DISHES SECTION (detail view) === */
+
+.dishes-section {
+  padding: 0 var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.dishes-section__heading {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.dish-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.dish-item:last-child { border-bottom: none; }
+
+.dish-item--signature {
+  background: var(--color-accent-gold-subtle);
+  margin: 0 calc(-1 * var(--space-2));
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  border-bottom: none;
+}
+
+.dish-item__name-th {
+  font-family: var(--font-thai);
+  font-size: var(--text-base);
+  color: var(--color-text-primary);
+  font-weight: var(--weight-medium);
+}
+
+.dish-item__name-en {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.dish-item__price {
+  font-size: var(--text-sm);
+  color: var(--color-accent-gold);
+  font-weight: var(--weight-semibold);
+  margin-left: auto;
+}
+
+.dish-item__notes {
+  width: 100%;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  margin-top: 2px;
+}
+
+.dish-item__badge {
+  font-size: var(--text-xs);
+  color: var(--color-accent-gold);
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* === CONTACT ROW (detail view) === */
+
+.contact-row {
+  padding: 0 var(--space-4);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.contact-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  min-height: 44px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+  transition: background var(--transition-fast);
+}
+.contact-link:active { background: var(--color-interactive-pressed); }
+
+.contact-link--phone {
+  color: var(--color-accent-gold);
+}
+
+/* === SOURCE ATTRIBUTION (detail view) === */
+
+.source-attribution {
+  padding: 0 var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-left: calc(var(--space-4) + 2px);
+  border-left: 2px solid var(--color-accent-gold-muted);
+}
+
+.source-attribution__quote {
+  font-family: var(--font-thai);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  line-height: var(--leading-relaxed);
+  font-style: italic;
+}
+
+/* === STREET VIEW LINK === */
+
+.street-view-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  min-height: 44px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  text-decoration: none;
+  transition: background var(--transition-fast);
+}
+.street-view-link:active { background: var(--color-interactive-pressed); }
+
+/* === SEARCH CLEAR BUTTON === */
+
+.search-clear-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-lg);
+  cursor: pointer;
+}
+.search-clear-btn--visible {
+  display: flex;
+}
+
+/* === PULL TO REFRESH INDICATOR === */
+
+.pull-indicator {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%) translateY(-100%);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-elevated);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  z-index: var(--z-toast);
+  transition: transform var(--transition-fast);
+  box-shadow: var(--shadow-card);
+}
+.pull-indicator--active {
+  transform: translateX(-50%) translateY(0);
+}
+
+/* === VIEW TOGGLE (list/map switcher in filter bar) === */
+
+.view-toggle {
+  display: flex;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.view-toggle__btn {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-tertiary);
+  min-height: 36px;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+.view-toggle__btn--active {
+  color: var(--color-accent-gold);
+  background: var(--color-accent-gold-subtle);
+}
+
+/* === LOCATION NOTICE === */
+
+.location-notice {
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+.location-notice[hidden] { display: none; }
+
+/* === FILTER CHIP VARIANTS === */
+
+.filter-chip--disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.filter-chip--period {
+  /* meal period chips — no visual difference, semantic marker */
+}
