@@ -76,6 +76,68 @@ function photoStripHTML(restaurant) {
   return '<div style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;">' + slides + '</div>';
 }
 
+/* ── Contact grid (compact 2x2) ─────────────────────────────── */
+
+function contactGridHTML(restaurant) {
+  const cells = [];
+  const cellStyle = 'flex:1;min-width:calc(50% - 4px);padding:10px 12px;background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:10px;display:flex;flex-direction:column;gap:2px;';
+  const iconStyle = 'font-size:14px;';
+  const labelStyle = 'font-size:11px;color:#6B5F52;font-weight:500;text-transform:uppercase;letter-spacing:0.03em;';
+  const valueStyle = 'font-size:14px;color:#EAE2D2;font-weight:500;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+  const linkValueStyle = valueStyle + 'color:#C9A84C;text-decoration:none;';
+
+  // Address
+  if (restaurant.address_en) {
+    cells.push('<div style="' + cellStyle + '">'
+      + '<span style="' + labelStyle + '">Address</span>'
+      + '<span style="' + valueStyle + '" title="' + escapeHTML(restaurant.address_en) + '">' + escapeHTML(restaurant.address_en) + '</span>'
+      + '</div>');
+  }
+
+  // Phone
+  if (restaurant.phone) {
+    const raw = restaurant.phone.replace(/\s+/g, '');
+    let display = raw;
+    const thaiMatch = raw.replace(/^\+66/, '0').match(/^(0\d{1,2})(\d{3,4})(\d{4})$/);
+    if (thaiMatch) display = thaiMatch[1] + '-' + thaiMatch[2] + '-' + thaiMatch[3];
+    const auMatch = raw.match(/^(\(?0\d\)?)(\d{4})(\d{4})$/);
+    if (auMatch) display = auMatch[1] + ' ' + auMatch[2] + ' ' + auMatch[3];
+    cells.push('<div style="' + cellStyle + '">'
+      + '<span style="' + labelStyle + '">Phone</span>'
+      + '<a href="tel:' + encodeURI(raw) + '" style="' + linkValueStyle + '">' + escapeHTML(display) + '</a>'
+      + '</div>');
+  }
+
+  // Website
+  if (restaurant.website) {
+    let displayUrl = restaurant.website;
+    try { displayUrl = new URL(restaurant.website).hostname.replace(/^www\./, ''); } catch {}
+    cells.push('<div style="' + cellStyle + '">'
+      + '<span style="' + labelStyle + '">Website</span>'
+      + '<a href="' + escapeHTML(restaurant.website) + '" target="_blank" rel="noopener noreferrer" style="' + linkValueStyle + '">' + escapeHTML(displayUrl) + '</a>'
+      + '</div>');
+  }
+
+  // Distance
+  const detailPrecision = restaurant.location_precision || 'no_location';
+  let distText = '';
+  if (detailPrecision === 'area_only' && restaurant.area) {
+    distText = restaurant.area.replace(/_/g, ' ');
+  } else if (detailPrecision !== 'no_location') {
+    const fd = formatDistance(restaurant._distanceMetres, detailPrecision);
+    if (fd) distText = (detailPrecision === 'approximate' ? '~' : '') + fd;
+  }
+  if (distText) {
+    cells.push('<div style="' + cellStyle + '">'
+      + '<span style="' + labelStyle + '">Distance</span>'
+      + '<span style="' + valueStyle + '">' + escapeHTML(distText) + '</span>'
+      + '</div>');
+  }
+
+  if (cells.length === 0) return '';
+  return '<div style="display:flex;flex-wrap:wrap;gap:8px;padding:0 16px;">' + cells.join('') + '</div>';
+}
+
 /* ── Location block (cart finder box, landmark notes) ────── */
 
 function locationBlockHTML(restaurant) {
@@ -166,6 +228,37 @@ function sourceAttributionHTML(restaurant) {
   return '<div class="source-attribution"><p class="source-attribution__quote">"' + escapeHTML(restaurant.source_quote_th) + '"</p></div>';
 }
 
+/* ── Extract clean source name from URL ────────────────────── */
+
+function extractSourceName(url, fallbackName) {
+  // Use the source name if it's meaningful (not a generic catch-all)
+  if (fallbackName && fallbackName !== 'Other Editorial' && fallbackName !== 'other_editorial' && fallbackName !== 'Other') {
+    return fallbackName;
+  }
+  // Extract a readable name from the URL domain
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, '');
+    // Remove TLD suffixes to get the brand name
+    const cleaned = hostname
+      .replace(/\.com\.au$/, '')
+      .replace(/\.co\.th$/, '')
+      .replace(/\.co\.uk$/, '')
+      .replace(/\.com$/, '')
+      .replace(/\.org$/, '')
+      .replace(/\.net$/, '')
+      .replace(/\.io$/, '')
+      .replace(/\.au$/, '')
+      .replace(/\.th$/, '');
+    // Capitalize first letter
+    if (cleaned) {
+      return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    }
+    return hostname;
+  } catch {
+    return fallbackName || 'Review';
+  }
+}
+
 /* ── Review links (block layout, 2-3 across) ──────────────── */
 
 async function reviewLinksHTML(restaurantId, restaurantName) {
@@ -183,7 +276,7 @@ async function reviewLinksHTML(restaurantId, restaurantName) {
   const btnStyle = 'display:flex;align-items:center;justify-content:center;gap:6px;flex:1;min-width:calc(50% - 4px);padding:12px 10px;background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:12px;font-size:14px;font-weight:500;color:#EAE2D2;text-decoration:none;text-align:center;-webkit-tap-highlight-color:transparent;';
 
   const blocks = sources.map(s => {
-    const label = s.sources?.name || 'Review';
+    const label = extractSourceName(s.url, s.sources?.name);
     const rating = s.rating_score ? ' \u2605' + s.rating_score : '';
     return '<a href="' + escapeHTML(s.url) + '" style="' + btnStyle + '" target="_blank" rel="noopener noreferrer">' + escapeHTML(label) + rating + '</a>';
   }).join('');
@@ -192,30 +285,6 @@ async function reviewLinksHTML(restaurantId, restaurantName) {
     + '<h3 style="font-size:14px;font-weight:600;color:#A8957C;margin-bottom:10px;">Read Reviews on ' + safeName + '</h3>'
     + '<div style="display:flex;flex-wrap:wrap;gap:8px;">' + blocks + '</div>'
     + '</div>';
-}
-
-/* ── Contact row ────────────────────────────────────────────── */
-
-function contactRowHTML(restaurant) {
-  const items = [];
-  if (restaurant.phone) {
-    const raw = restaurant.phone.replace(/\s+/g, '');
-    let display = raw;
-    const thaiMatch = raw.replace(/^\+66/, '0').match(/^(0\d{1,2})(\d{3,4})(\d{4})$/);
-    if (thaiMatch) display = thaiMatch[1] + '-' + thaiMatch[2] + '-' + thaiMatch[3];
-    // Also handle Australian numbers
-    const auMatch = raw.match(/^(\(?0\d\)?)(\d{4})(\d{4})$/);
-    if (auMatch) display = auMatch[1] + ' ' + auMatch[2] + ' ' + auMatch[3];
-    items.push('<a class="contact-link contact-link--phone" href="tel:' + encodeURI(raw) + '">\uD83D\uDCDE ' + escapeHTML(display) + '</a>');
-  }
-  if (restaurant.website) {
-    items.push('<a class="contact-link" href="' + escapeHTML(restaurant.website) + '" target="_blank" rel="noopener noreferrer">\uD83C\uDF10 Website</a>');
-  }
-  if (restaurant.line_id) {
-    items.push('<span class="contact-link">LINE: ' + escapeHTML(restaurant.line_id) + '</span>');
-  }
-  if (items.length === 0) return '';
-  return '<div class="contact-row">' + items.join('') + '</div>';
 }
 
 /* ── Directions buttons (Apple Maps + Google Maps side by side) ── */
@@ -340,16 +409,6 @@ function renderDetailPage(r) {
     ? '<button class="detail__heart detail__heart--active" data-action="wishlist" data-id="' + r.id + '" aria-label="Remove from wishlist" aria-pressed="true">\u2665</button>'
     : '<button class="detail__heart" data-action="wishlist" data-id="' + r.id + '" aria-label="Add to wishlist" aria-pressed="false">\u2661</button>';
 
-  // Distance
-  const detailPrecision = r.location_precision || 'no_location';
-  let distText = '';
-  if (detailPrecision === 'area_only' && r.area) {
-    distText = r.area.replace(/_/g, ' ');
-  } else if (detailPrecision !== 'no_location') {
-    const fd = formatDistance(r._distanceMetres, detailPrecision);
-    if (fd) distText = (detailPrecision === 'approximate' ? '~' : '') + fd;
-  }
-
   // Tagline
   const taglineHTML = r.tagline
     ? '<p style="padding:0 16px;font-size:17px;color:#A8957C;font-style:italic;line-height:1.5;">' + escapeHTML(r.tagline) + '</p>'
@@ -371,27 +430,23 @@ function renderDetailPage(r) {
     + (subName ? '<span class="detail-header__subname">' + escapeHTML(subName) + '</span>' : '')
     + (r.legacy_note ? '<span class="detail-header__legacy">' + escapeHTML(r.legacy_note) + '</span>' : '')
     + '</div>'
-    + '<div class="detail-address">'
-    + (r.address_en ? '<span class="detail-address__line">' + escapeHTML(r.address_en) + '</span>' : '')
-    + (distText ? '<span class="detail-address__dist">' + escapeHTML(distText) + '</span>' : '')
-    + '</div>'
-    + contactRowHTML(r)
+    + contactGridHTML(r)
     + michelinHTML
     + taglineHTML
     + locationBlockHTML(r)
     + directionsButtonsHTML(r)
     + (metaLine ? '<div class="detail-meta">' + escapeHTML(metaLine) + '</div>' : '')
-    + ratingsHTML(r)
-    + dietaryBadgesHTML(r)
     + '<div class="detail-hours">'
     + (todayText ? '<button class="detail-hours__today" aria-expanded="false"><span>Today: ' + escapeHTML(todayText) + '</span><span class="detail-hours__chevron">\u25BE</span></button>' : '')
     + '<div class="detail-hours__full" hidden>' + fullHoursHTML + '</div>'
     + '</div>'
+    + ratingsHTML(r)
+    + dietaryBadgesHTML(r)
+    + '<div id="review-links-placeholder"></div>'
     + descriptionHTML
     + dishesDetailHTML(r.dishes)
     + specialitiesHTML(r.specialities)
     + sourceAttributionHTML(r)
-    + '<div id="review-links-placeholder"></div>'
     + '</div>';
 
   dom.app.classList.add('app-shell--detail');
