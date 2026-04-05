@@ -33,7 +33,7 @@ function haversineDistance(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-/* ── Distance formatter ─────────────────────────────────────── */
+/* ── Distance formatter ───────────────────────────────────── */
 
 function formatDistance(metres, precision) {
   if (!precision || precision === 'no_location') return 'Find locally';
@@ -47,7 +47,7 @@ function formatDistance(metres, precision) {
   } else {
     const km = (metres / 1000).toFixed(1);
     const mins = Math.max(1, Math.round(metres / 80));
-    return `${km} km · ${mins} min walk`;
+    return `${km} km \u00b7 ${mins} min walk`;
   }
 }
 
@@ -59,11 +59,11 @@ function cityBadgeClass(city) {
 }
 
 function cityLabel(city) {
-  const map = { bangkok: 'Bangkok', chiang_mai: 'Chiang Mai', koh_chang: 'Koh Chang' };
+  const map = { bangkok: 'Bangkok', chiang_mai: 'Chiang Mai', koh_chang: 'Koh Chang', melbourne: 'Melbourne' };
   return map[city] || escapeHTML(city);
 }
 
-/* ── Open/closed status ─────────────────────────────────────── */
+/* ── Open/closed status ───────────────────────────────────── */
 
 function isOpenNow(openingHours) {
   if (!openingHours || typeof openingHours !== 'object') return 'unknown';
@@ -118,7 +118,7 @@ function isOpenNow(openingHours) {
   return 'closed';
 }
 
-/* ── Meal period checker ────────────────────────────────────── */
+/* ── Meal period checker ──────────────────────────────────── */
 
 function isOpenDuringPeriod(period, opening_hours) {
   if (!opening_hours || !period) return false;
@@ -156,20 +156,20 @@ function isOpenDuringPeriod(period, opening_hours) {
   return false;
 }
 
-/* ── Hours formatting ───────────────────────────────────────── */
+/* ── Hours formatting ─────────────────────────────────────── */
 
 function formatHoursSlot(slot) {
   if (!slot || typeof slot !== 'object') return '';
-  return `${slot.open || '?'}–${slot.close || '?'}`;
+  return `${slot.open || '?'}\u2013${slot.close || '?'}`;
 }
 
 function formatDayHours(daySlots) {
   if (daySlots === null) return 'Closed';
-  if (!Array.isArray(daySlots) || daySlots.length === 0) return '—';
+  if (!Array.isArray(daySlots) || daySlots.length === 0) return '\u2014';
   return daySlots.map(formatHoursSlot).join(', ');
 }
 
-/* ── Today's hours (compact) ────────────────────────────────── */
+/* ── Today's hours (compact) ───────────────────────────────── */
 
 function todayHoursText(openingHours) {
   if (!openingHours || typeof openingHours !== 'object') return '';
@@ -185,7 +185,7 @@ function todayHoursText(openingHours) {
   return daySlots.map(formatHoursSlot).join(', ');
 }
 
-/* ── Toast notifications ────────────────────────────────────── */
+/* ── Toast notifications ──────────────────────────────────── */
 
 function showToast(message, type = 'info') {
   const toast = document.createElement('div');

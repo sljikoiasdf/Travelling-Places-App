@@ -43,7 +43,7 @@ function renderLocationNotice() {
   }
 }
 
-/* ── Location picker overlay ────────────────────────────────── */
+/* ── Location picker overlay ──────────────────────────────── */
 
 function showLocationPicker() {
   const existing = document.getElementById('location-picker-overlay');
@@ -83,7 +83,7 @@ function showLocationPicker() {
         <button class="loc-picker__submit" type="submit">Find</button>
       </form>
       <p class="loc-picker__error" id="loc-picker-error" hidden></p>
-      <button class="loc-picker__skip" id="loc-picker-skip">Skip — browse without location</button>
+      <button class="loc-picker__skip" id="loc-picker-skip">Skip \u2014 browse without location</button>
     </div>
   `;
 
@@ -92,8 +92,8 @@ function showLocationPicker() {
   overlay.querySelectorAll('.loc-picker__city-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const city = btn.dataset.city;
-      setLocationFromCity(city);
       hideLocationPicker();
+      setLocationFromCity(city);
     });
   });
 
@@ -119,7 +119,7 @@ function hideLocationPicker() {
   if (overlay) overlay.hidden = true;
 }
 
-/* ── Set location from city ───────────────────────────────── */
+/* ── Set location from city ─────────────────────────────── */
 // Requires late-bound imports to avoid circular deps
 let _applyFiltersAndSearch = null;
 let _buildFilterChips = null;
@@ -155,7 +155,6 @@ function setLocationFromCity(city) {
   if (_centreMapOnUser) _centreMapOnUser(CONFIG.mapCityZoom);
 
   if (state.activeView === 'map' && state.map) {
-    state.map.invalidateSize();
     if (_renderPins) _renderPins(state.filtered);
   }
 
@@ -163,13 +162,13 @@ function setLocationFromCity(city) {
   showToast(`Location set to ${cityLabel(city)}`);
 }
 
-/* ── Geocode address via Nominatim ──────────────────────────── */
+/* ── Geocode address via Nominatim ────────────────────────── */
 
 async function geocodeAddress(address) {
   const errEl = document.getElementById('loc-picker-error');
   const btn   = document.querySelector('.loc-picker__submit');
   if (errEl) { errEl.hidden = true; errEl.textContent = ''; }
-  if (btn) { btn.disabled = true; btn.textContent = 'Searching…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Searching\u2026'; }
 
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`;
@@ -201,14 +200,13 @@ async function geocodeAddress(address) {
     if (_centreMapOnUser) _centreMapOnUser(CONFIG.mapCityZoom);
 
     if (state.activeView === 'map' && state.map) {
-      state.map.invalidateSize();
       if (_renderPins) _renderPins(state.filtered);
     }
 
     if (_refreshFromNetwork) _refreshFromNetwork(state.userLat, state.userLng).catch(() => {});
     hideLocationPicker();
 
-    const shortName = display_name.length > 50 ? display_name.slice(0, 47) + '…' : display_name;
+    const shortName = display_name.length > 50 ? display_name.slice(0, 47) + '\u2026' : display_name;
     showToast(`Location set to ${shortName}`);
 
   } catch (err) {
