@@ -26,7 +26,7 @@ function buildFilterChips() {
 
   const gpsGranted = state.locationStatus === 'granted';
   const nearMeActive = state.activeFilters.near_me === true;
-  chips.push(`<button class="filter-chip${nearMeActive ? ' filter-chip--active' : ''}${!gpsGranted ? ' filter-chip--disabled' : ''}" data-filter-dim="near_me" data-filter-val="true" aria-pressed="${nearMeActive}" ${!gpsGranted ? 'aria-disabled="true"' : ''}>\uD83D\uDCCD Near me</button>`);
+  chips.push(`<button class="filter-chip${nearMeActive ? ' filter-chip--active' : ''}${!gpsGranted ? ' filter-chip--disabled' : ''}" data-filter-dim="near_me" data-filter-val="true" aria-pressed="${nearMeActive}" ${!gpsGranted ? 'aria-disabled="true"' : ''}>📍 Near me</button>`);
 
   const openNowActive = state.activeFilters.open_now === true;
   chips.push(`<button class="filter-chip${openNowActive ? ' filter-chip--active' : ''}" data-filter-dim="open_now" data-filter-val="true" aria-pressed="${openNowActive}">Open now</button>`);
@@ -48,7 +48,7 @@ function buildFilterChips() {
   const prices = [...new Set(state.restaurants.map(r => r.price_range).filter(Boolean))].sort();
   prices.forEach(price => {
     const isActive = state.activeFilters.price_range === price;
-    chips.push(`<button class="filter-chip${isActive ? ' filter-chip--active' : ''}" data-filter-dim="price_range" data-filter-val="${price}" aria-pressed="${isActive}">${'\u0E3F'.repeat(price)}</button>`);
+    chips.push(`<button class="filter-chip${isActive ? ' filter-chip--active' : ''}" data-filter-dim="price_range" data-filter-val="${price}" aria-pressed="${isActive}">${'฿'.repeat(price)}</button>`);
   });
 
   if (state.restaurants.some(r => r.is_halal)) {
@@ -61,10 +61,10 @@ function buildFilterChips() {
   }
 
   const periods = [
-    { key: 'breakfast',  label: '\uD83C\uDF05 Breakfast' },
-    { key: 'lunch',      label: '\u2600\uFE0F Lunch' },
-    { key: 'dinner',     label: '\uD83C\uDF19 Dinner' },
-    { key: 'late_night', label: '\uD83C\uDF03 Late Night' },
+    { key: 'breakfast',  label: '🌅 Breakfast' },
+    { key: 'lunch',      label: '☀️ Lunch' },
+    { key: 'dinner',     label: '🌙 Dinner' },
+    { key: 'late_night', label: '🌃 Late Night' },
   ];
   periods.forEach(({ key, label }) => {
     const isActive = state.activeFilters.meal_period === key;
@@ -87,6 +87,8 @@ function searchMatches(restaurant, query) {
   const haystack = [
     restaurant.name_th,
     restaurant.name_en,
+    restaurant.description_en,
+    restaurant.description_th,
     restaurant.area,
     restaurant.area_th,
     restaurant.notes,

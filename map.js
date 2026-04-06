@@ -24,7 +24,7 @@ const PIN_UNKNOWN = '#4A4440';
 const USER_BLUE   = '#4285F4';
 const GOLD        = '#C9A84C';
 
-/* ── Google Maps dark theme ─────────────────────────────────── */
+/* ── Google Maps dark theme ───────────────────────────── */
 const DARK_STYLES = [
   { elementType: 'geometry', stylers: [{ color: '#212121' }] },
   { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
@@ -47,7 +47,7 @@ const DARK_STYLES = [
   { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#3d3d3d' }] },
 ];
 
-/* ── Custom HTML overlay (like Leaflet divIcon) ─────────────── */
+/* ── Custom HTML overlay (like Leaflet divIcon) ───────────── */
 let PinOverlay = null;
 
 function definePinOverlay() {
@@ -96,7 +96,7 @@ function definePinOverlay() {
   };
 }
 
-/* ── Cluster overlay storage ────────────────────────────────── */
+/* ── Cluster overlay storage ──────────────────────────── */
 let _clusterOverlays = [];
 
 /* ── Init ───────────────────────────────────────────────────── */
@@ -161,6 +161,20 @@ function initMap() {
       }
     }, 600);
   });
+
+  // "My location" button
+  const locateBtn = document.createElement('button');
+  locateBtn.type = 'button';
+  locateBtn.title = 'Back to my location';
+  locateBtn.setAttribute('aria-label', 'Back to my location');
+  locateBtn.style.cssText = 'width:40px;height:40px;border:none;border-radius:8px;background:rgba(14,14,14,0.85);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.35);-webkit-tap-highlight-color:transparent;margin:10px 10px 0 0;';
+  locateBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>';
+  locateBtn.addEventListener('click', () => {
+    if (state.userLat && state.userLng) {
+      centreMapOnUser(CONFIG.mapGPSZoom);
+    }
+  });
+  state.map.controls[google.maps.ControlPosition.RIGHT_TOP].push(locateBtn);
 
   // Open/Closed/Unknown legend
   const legendDiv = document.createElement('div');
@@ -231,7 +245,7 @@ function getZoomTier() {
   return 'far';
 }
 
-/* ── Dot size based on zoom ─────────────────────────────────── */
+/* ── Dot size based on zoom ───────────────────────────── */
 
 function getDotSize(zoom) {
   if (zoom >= 18) return 28;
