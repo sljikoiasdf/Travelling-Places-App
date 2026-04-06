@@ -33,7 +33,7 @@ const STATIC_ASSETS = [
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
 ];
 
-/* ── Install ─────────────────────────────────────────────── */
+/* ── Install ───────────────────────────────────────────────── */
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -47,7 +47,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-/* ── Activate ────────────────────────────────────────────── */
+/* ── Activate ──────────────────────────────────────────────── */
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
@@ -61,7 +61,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-/* ── Fetch routing ───────────────────────────────────────── */
+/* ── Fetch routing ─────────────────────────────────────────── */
 
 const SUPABASE_HOST    = 'gfmjhirnywupfbfmflwn.supabase.co';
 const SUPABASE_REST    = '/rest/v1/';
@@ -95,7 +95,7 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(networkFirst(request, CACHE_NAME));
 });
 
-/* ── Strategy helpers ────────────────────────────────────── */
+/* ── Strategy helpers ──────────────────────────────────────── */
 
 async function cacheFirst(request) {
   const cached = await caches.match(request);

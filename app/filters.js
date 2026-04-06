@@ -17,7 +17,7 @@ function bindFilterDeps(deps) {
   _renderPins = deps.renderPins;
 }
 
-/* ── Filter chips ─────────────────────────────────────────── */
+/* ── Filter chips ───────────────────────────────────────────── */
 
 function buildFilterChips() {
   const container = dom.filterChips;
@@ -26,7 +26,7 @@ function buildFilterChips() {
 
   const gpsGranted = state.locationStatus === 'granted';
   const nearMeActive = state.activeFilters.near_me === true;
-  chips.push(`<button class="filter-chip${nearMeActive ? ' filter-chip--active' : ''}${!gpsGranted ? ' filter-chip--disabled' : ''}" data-filter-dim="near_me" data-filter-val="true" aria-pressed="${nearMeActive}" ${!gpsGranted ? 'aria-disabled="true"' : ''}>\ud83d\udccd Near me</button>`);
+  chips.push(`<button class="filter-chip${nearMeActive ? ' filter-chip--active' : ''}${!gpsGranted ? ' filter-chip--disabled' : ''}" data-filter-dim="near_me" data-filter-val="true" aria-pressed="${nearMeActive}" ${!gpsGranted ? 'aria-disabled="true"' : ''}>📍 Near me</button>`);
 
   const openNowActive = state.activeFilters.open_now === true;
   chips.push(`<button class="filter-chip${openNowActive ? ' filter-chip--active' : ''}" data-filter-dim="open_now" data-filter-val="true" aria-pressed="${openNowActive}">Open now</button>`);
@@ -48,7 +48,7 @@ function buildFilterChips() {
   const prices = [...new Set(state.restaurants.map(r => r.price_range).filter(Boolean))].sort();
   prices.forEach(price => {
     const isActive = state.activeFilters.price_range === price;
-    chips.push(`<button class="filter-chip${isActive ? ' filter-chip--active' : ''}" data-filter-dim="price_range" data-filter-val="${price}" aria-pressed="${isActive}">${'\u0e3f'.repeat(price)}</button>`);
+    chips.push(`<button class="filter-chip${isActive ? ' filter-chip--active' : ''}" data-filter-dim="price_range" data-filter-val="${price}" aria-pressed="${isActive}">${'฿'.repeat(price)}</button>`);
   });
 
   if (state.restaurants.some(r => r.is_halal)) {
@@ -61,10 +61,10 @@ function buildFilterChips() {
   }
 
   const periods = [
-    { key: 'breakfast',  label: '\ud83c\udf05 Breakfast' },
-    { key: 'lunch',      label: '\u2600\ufe0f Lunch' },
-    { key: 'dinner',     label: '\ud83c\udf19 Dinner' },
-    { key: 'late_night', label: '\ud83c\udf03 Late Night' },
+    { key: 'breakfast',  label: '🌅 Breakfast' },
+    { key: 'lunch',      label: '☀️ Lunch' },
+    { key: 'dinner',     label: '🌙 Dinner' },
+    { key: 'late_night', label: '🌃 Late Night' },
   ];
   periods.forEach(({ key, label }) => {
     const isActive = state.activeFilters.meal_period === key;
@@ -74,7 +74,7 @@ function buildFilterChips() {
   container.innerHTML = chips.join('');
 }
 
-/* ── Search ───────────────────────────────────────────────── */
+/* ── Search ─────────────────────────────────────────────────── */
 
 function searchMatches(restaurant, query) {
   if (!query || query.length < 2) return true;
@@ -87,6 +87,8 @@ function searchMatches(restaurant, query) {
   const haystack = [
     restaurant.name_th,
     restaurant.name_en,
+    restaurant.description_en,
+    restaurant.description_th,
     restaurant.area,
     restaurant.area_th,
     restaurant.notes,
@@ -97,7 +99,7 @@ function searchMatches(restaurant, query) {
   return haystack.includes(lower);
 }
 
-/* ── Sort ─────────────────────────────────────────────────── */
+/* ── Sort ───────────────────────────────────────────────────── */
 
 function sortRestaurants(restaurants, sortOrder) {
   const arr = [...restaurants];
@@ -114,7 +116,7 @@ function sortRestaurants(restaurants, sortOrder) {
   return arr;
 }
 
-/* ── Apply all filters + search + sort ──────────────────── */
+/* ── Apply all filters + search + sort ──────────────────────── */
 
 function applyFiltersAndSearch() {
   let results = [...state.restaurants];
@@ -160,7 +162,7 @@ function applyFiltersAndSearch() {
   renderLocationNotice();
 }
 
-/* ── Render list ──────────────────────────────────────────── */
+/* ── Render list ────────────────────────────────────────────── */
 
 function renderList(restaurants) {
   if (!dom.cardList) return;
